@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painel</title>
+    <meta name="description" content="Painel interno para gerar codigo de pagamento." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <main class="shell shell-locked">
+      <section class="intro-panel reveal">
+        <div class="panel-topbar">
+          <div class="eyebrow">PAINEL</div>
+          <button id="logout-button" class="ghost-button" type="button">Sair</button>
+        </div>
+        <h1>Informe o valor e gere o codigo em segundos.</h1>
+        <p class="lead">Uma tela limpa para criar a cobranca e acompanhar o pagamento sem distracoes.</p>
+        <p class="account-badge" id="account-badge">Carregando acesso...</p>
+
+        <form id="deposit-form" class="deposit-form">
+          <div class="field wide">
+            <label for="amount">Valor</label>
+            <div class="input-shell money-shell">
+              <span>R$</span>
+              <input id="amount" name="amount" type="text" inputmode="decimal" placeholder="100,00" required />
+            </div>
+          </div>
+
+          <button id="submit-button" class="submit-button" type="submit">Gerar codigo</button>
+        </form>
+      </section>
+
+      <section class="card-panel reveal delay-1">
+        <article class="deposit-card">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Pagamento</p>
+              <h2 id="card-title">Aguardando valor</h2>
+            </div>
+            <button class="ghost-button" id="reset-button" type="button">Limpar</button>
+          </div>
+
+          <div class="status-block">
+            <div class="status-row active" data-step="1">
+              <div class="status-copy">
+                <span class="dot"></span>
+                <strong>Codigo pronto</strong>
+              </div>
+              <span class="step-value" id="step-1">Pendente</span>
+            </div>
+            <div class="status-row" data-step="2">
+              <div class="status-copy">
+                <span class="dot"></span>
+                <strong>Aguardando pagamento</strong>
+              </div>
+              <span class="step-value" id="step-2">-</span>
+            </div>
+            <div class="status-row" data-step="3">
+              <div class="status-copy">
+                <span class="dot"></span>
+                <strong>Pagamento confirmado</strong>
+              </div>
+              <span class="step-value" id="step-3">-</span>
+            </div>
+          </div>
+
+          <div class="qr-stage" id="qr-stage">
+            <div class="qr-placeholder">
+              <span>Codigo</span>
+              <p>Informe o valor para gerar o pagamento.</p>
+            </div>
+          </div>
+
+          <div class="details-grid">
+            <div class="detail">
+              <span>Referencia</span>
+              <strong id="payment-reference">-</strong>
+            </div>
+            <div class="detail">
+              <span>Status</span>
+              <strong id="payment-status">-</strong>
+            </div>
+            <div class="detail">
+              <span>Valor</span>
+              <strong id="payment-amount">-</strong>
+            </div>
+            <div class="detail">
+              <span>Gerado em</span>
+              <strong id="payment-created">-</strong>
+            </div>
+          </div>
+
+          <div class="copy-block">
+            <label for="payment-code">Codigo para copiar</label>
+            <textarea id="payment-code" rows="4" readonly placeholder="O codigo aparecera aqui."></textarea>
+            <button id="copy-button" class="secondary-button" type="button" disabled>Copiar</button>
+          </div>
+
+          <p id="feedback" class="feedback">Informe um valor para continuar.</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

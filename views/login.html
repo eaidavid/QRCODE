@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Acesso</title>
+    <meta name="description" content="Tela de acesso do sistema." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <main class="auth-shell">
+      <section class="auth-card reveal">
+        <div class="eyebrow">ACESSO</div>
+        <h1>Entre para abrir o painel.</h1>
+        <p class="lead">Somente usuarios liberados no codigo podem acessar esta area.</p>
+
+        <form id="login-form" class="deposit-form auth-form">
+          <div class="field wide">
+            <label for="login">Login</label>
+            <input id="login" name="login" type="text" autocomplete="username" required />
+          </div>
+
+          <div class="field wide">
+            <label for="password">Senha</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+
+          <button id="login-button" class="submit-button" type="submit">Entrar</button>
+        </form>
+
+        <p id="login-feedback" class="feedback">Informe seu login e sua senha.</p>
+      </section>
+    </main>
+  </body>
+</html>

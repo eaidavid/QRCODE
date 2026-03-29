@@ -1,0 +1,28 @@
+{
+  "name": "instant-payment-screen",
+  "version": "1.0.0",
+  "description": "Site Node.js para geracao de cobranca por QR Code",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "hash-password": "node scripts/hash-password.js"
+  },
+  "keywords": [
+    "nodejs",
+    "express",
+    "pix",
+    "qrcode",
+    "payment"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "qrcode": "^1.5.4",
+    "zod": "^4.1.12"
+  }
+}
