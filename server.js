@@ -18,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1);
 const port = Number(process.env.PORT || 3000);
 
 const SESSION_COOKIE = 'panel_session';
@@ -34,7 +35,6 @@ const appUrl = readEnv('APP_URL', 'PUBLIC_URL');
 const webhookSecret = readEnv('WEBHOOK_SECRET', 'PODPAY_WEBHOOK_SECRET');
 const defaultProfile = readDefaultProfile();
 
-const sessions = new Map();
 const chargeCache = new Map();
 const webhookEvents = new Map();
 
@@ -227,7 +227,7 @@ app.post('/auth/login', async (req, res) => {
   setCookie(res, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'Lax',
-    secure: gatewayEnv === 'live',
+    secure: shouldUseSecureCookie(req),
     path: '/',
     maxAge: SESSION_TTL_MS
   });
@@ -243,20 +243,10 @@ app.post('/auth/login', async (req, res) => {
 });
 
 app.post('/auth/logout', (req, res) => {
-  const cookies = parseCookies(req.headers.cookie || '');
-  const token = cookies[SESSION_COOKIE];
-
-  if (token) {
-    const sessionId = verifySessionToken(token);
-    if (sessionId) {
-      sessions.delete(sessionId);
-    }
-  }
-
   clearCookie(res, SESSION_COOKIE, {
     httpOnly: true,
     sameSite: 'Lax',
-    secure: gatewayEnv === 'live',
+    secure: shouldUseSecureCookie(req),
     path: '/'
   });
 
@@ -443,7 +433,6 @@ function captureRawBody(req, _res, buffer) {
 }
 
 function attachSession(req, _res, next) {
-  pruneSessions();
   pruneWebhookEvents();
 
   const cookies = parseCookies(req.headers.cookie || '');
@@ -453,27 +442,18 @@ function attachSession(req, _res, next) {
     return next();
   }
 
-  const sessionId = verifySessionToken(token);
+  const session = verifySessionToken(token);
 
-  if (!sessionId) {
-    return next();
-  }
-
-  const session = sessions.get(sessionId);
-
-  if (!session || session.expiresAt <= Date.now()) {
-    sessions.delete(sessionId);
+  if (!session) {
     return next();
   }
 
   const account = findAccountById(session.accountId);
 
   if (!account || account.active === false) {
-    sessions.delete(sessionId);
     return next();
   }
 
-  session.expiresAt = Date.now() + SESSION_TTL_MS;
   req.session = session;
   req.account = account;
   next();
@@ -548,20 +528,17 @@ function requirePageAuth(req, res, next) {
 }
 
 function createSession(accountId) {
-  const sessionId = crypto.randomUUID();
-
-  sessions.set(sessionId, {
+  return signSessionToken({
     accountId,
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS
   });
-
-  return signSessionToken(sessionId);
 }
 
-function signSessionToken(sessionId) {
-  const signature = crypto.createHmac('sha256', sessionSecret).update(sessionId).digest('hex');
-  return `${sessionId}.${signature}`;
+function signSessionToken(session) {
+  const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
+  const signature = crypto.createHmac('sha256', sessionSecret).update(payload).digest('hex');
+  return `${payload}.${signature}`;
 }
 
 function verifySessionToken(token) {
@@ -571,27 +548,31 @@ function verifySessionToken(token) {
     return '';
   }
 
-  const sessionId = token.slice(0, lastDot);
+  const payload = token.slice(0, lastDot);
   const receivedSignature = token.slice(lastDot + 1);
-  const expectedSignature = crypto.createHmac('sha256', sessionSecret).update(sessionId).digest('hex');
+  const expectedSignature = crypto.createHmac('sha256', sessionSecret).update(payload).digest('hex');
 
   const expectedBuffer = Buffer.from(expectedSignature, 'hex');
   const receivedBuffer = Buffer.from(receivedSignature, 'hex');
 
   if (expectedBuffer.length !== receivedBuffer.length) {
-    return '';
+    return null;
   }
 
-  return crypto.timingSafeEqual(expectedBuffer, receivedBuffer) ? sessionId : '';
-}
+  if (!crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
+    return null;
+  }
 
-function pruneSessions() {
-  const now = Date.now();
+  try {
+    const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
 
-  for (const [sessionId, session] of sessions.entries()) {
-    if (session.expiresAt <= now) {
-      sessions.delete(sessionId);
+    if (!session?.accountId || !session?.expiresAt || session.expiresAt <= Date.now()) {
+      return null;
     }
+
+    return session;
+  } catch {
+    return null;
   }
 }
 
@@ -664,6 +645,18 @@ function serializeCookie(name, value, options = {}) {
   }
 
   return parts.join('; ');
+}
+
+function shouldUseSecureCookie(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const host = String(req.headers.host || '').trim().toLowerCase();
+  const isLocalHost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+
+  if (req.secure || forwardedProto === 'https') {
+    return true;
+  }
+
+  return gatewayEnv === 'live' && !isLocalHost;
 }
 
 function findAccountById(accountId) {
@@ -862,24 +855,324 @@ async function safeJson(response) {
 }
 
 async function mapCharge(data = {}, meta = {}) {
-  const code = data.pixQrCode || data.pixCode || data.pix?.copyPaste || data.pix?.emv || '';
-  const image = data.pixQrCodeImage || data.pix?.qrCodeImage || (code ? await generateQrDataUrl(code) : null);
+  const transaction = unwrapChargePayload(data);
+  const code = readChargeCode(transaction);
+  const image = normalizeImageSource(readChargeImage(transaction)) || (code ? await generateQrDataUrl(code) : null);
 
   return {
-    reference: data.id || data.transactionId || '',
-    state: normalizeState(data.status || 'pending'),
-    amountCents: Number(data.amount || 0),
-    amountFormatted: formatCents(Number(data.amount || 0)),
+    reference: readChargeReference(transaction),
+    state: normalizeState(readChargeStatus(transaction) || 'pending'),
+    amountCents: Number(readChargeAmount(transaction) || 0),
+    amountFormatted: formatCents(Number(readChargeAmount(transaction) || 0)),
     code,
     image,
-    createdAt: data.createdAt || data.created_at || null,
-    expiresAt: data.expiresAt || data.expirationDate || data.expires_at || null,
-    paidAt: data.paidAt || data.paid_at || null,
+    createdAt: readChargeCreatedAt(transaction),
+    expiresAt: readChargeExpiresAt(transaction),
+    paidAt: readChargePaidAt(transaction),
     requestId: meta.requestId || null,
     lastEvent: null,
     lastEventId: null,
     updatedAt: new Date().toISOString()
   };
+}
+
+function unwrapChargePayload(data) {
+  if (!data || typeof data !== 'object') {
+    return {};
+  }
+
+  const direct = data.data || data.transaction || data.charge || data.result || data.response || data;
+
+  if (Array.isArray(direct)) {
+    return direct[0] || {};
+  }
+
+  if (Array.isArray(direct?.transactions)) {
+    return direct.transactions[0] || direct;
+  }
+
+  if (Array.isArray(direct?.charges)) {
+    return direct.charges[0] || direct;
+  }
+
+  return direct;
+}
+
+function readChargeCode(data) {
+  return (
+    readFirstString(data, [
+      'pixQrCode',
+      'pix_qr_code',
+      'pixCode',
+      'pix_code',
+      'qrCode',
+      'qr_code',
+      'copyPaste',
+      'copy_paste',
+      'emv',
+      'brCode',
+      'br_code',
+      'payload'
+    ]) ||
+    readNestedString(data, [
+      ['pix', 'copyPaste'],
+      ['pix', 'copy_paste'],
+      ['pix', 'emv'],
+      ['pix', 'qrCode'],
+      ['pix', 'qr_code'],
+      ['pix', 'payload'],
+      ['paymentMethodData', 'pix', 'copyPaste'],
+      ['paymentMethodData', 'pix', 'copy_paste'],
+      ['paymentMethodData', 'pix', 'emv'],
+      ['paymentMethodData', 'pix', 'qrCode'],
+      ['paymentMethodData', 'pix', 'qr_code'],
+      ['paymentMethodData', 'pix', 'payload'],
+      ['payment_method_data', 'pix', 'copyPaste'],
+      ['payment_method_data', 'pix', 'copy_paste'],
+      ['payment_method_data', 'pix', 'emv'],
+      ['payment_method_data', 'pix', 'qrCode'],
+      ['payment_method_data', 'pix', 'qr_code'],
+      ['payment_method_data', 'pix', 'payload'],
+      ['paymentMethod', 'pix', 'copyPaste'],
+      ['paymentMethod', 'pix', 'copy_paste'],
+      ['paymentMethod', 'pix', 'emv'],
+      ['paymentMethod', 'pix', 'qrCode'],
+      ['paymentMethod', 'pix', 'qr_code'],
+      ['paymentMethod', 'pix', 'payload'],
+      ['payment_method', 'pix', 'copyPaste'],
+      ['payment_method', 'pix', 'copy_paste'],
+      ['payment_method', 'pix', 'emv'],
+      ['payment_method', 'pix', 'qrCode'],
+      ['payment_method', 'pix', 'qr_code'],
+      ['payment_method', 'pix', 'payload'],
+      ['qr', 'copyPaste'],
+      ['qr', 'copy_paste'],
+      ['qr', 'emv'],
+      ['qr', 'payload'],
+      ['pixData', 'copyPaste'],
+      ['pixData', 'copy_paste'],
+      ['pixData', 'emv'],
+      ['pixData', 'qrCode'],
+      ['pixData', 'qr_code'],
+      ['pix_data', 'copyPaste'],
+      ['pix_data', 'copy_paste'],
+      ['pix_data', 'emv'],
+      ['pix_data', 'qrCode'],
+      ['pix_data', 'qr_code']
+    ]) ||
+    findNestedStringByKey(data, ['pixqrcode', 'pixcode', 'qrcode', 'copypaste', 'emv', 'brcode', 'payload']) ||
+    ''
+  );
+}
+
+function readChargeImage(data) {
+  return (
+    readFirstString(data, ['pixQrCodeImage', 'pix_qr_code_image', 'qrCodeImage', 'qr_code_image', 'qrImage', 'qr_image', 'image']) ||
+    readNestedString(data, [
+      ['pix', 'qrCodeImage'],
+      ['pix', 'qr_code_image'],
+      ['pix', 'image'],
+      ['paymentMethodData', 'pix', 'qrCodeImage'],
+      ['paymentMethodData', 'pix', 'qr_code_image'],
+      ['paymentMethodData', 'pix', 'image'],
+      ['payment_method_data', 'pix', 'qrCodeImage'],
+      ['payment_method_data', 'pix', 'qr_code_image'],
+      ['payment_method_data', 'pix', 'image'],
+      ['paymentMethod', 'pix', 'qrCodeImage'],
+      ['paymentMethod', 'pix', 'qr_code_image'],
+      ['paymentMethod', 'pix', 'image'],
+      ['payment_method', 'pix', 'qrCodeImage'],
+      ['payment_method', 'pix', 'qr_code_image'],
+      ['payment_method', 'pix', 'image'],
+      ['qr', 'image'],
+      ['qr', 'qrCodeImage'],
+      ['qr', 'qr_code_image'],
+      ['pixData', 'image'],
+      ['pixData', 'qrCodeImage'],
+      ['pixData', 'qr_code_image'],
+      ['pix_data', 'image'],
+      ['pix_data', 'qrCodeImage'],
+      ['pix_data', 'qr_code_image']
+    ]) ||
+    findNestedStringByKey(data, ['pixqrcodeimage', 'qrcodeimage', 'qrimage', 'image']) ||
+    ''
+  );
+}
+
+function readChargeReference(data) {
+  return (
+    readFirstString(data, ['id', 'transactionId', 'transaction_id', 'reference', 'referenceId', 'reference_id', 'externalId', 'external_id']) ||
+    findNestedStringByKey(data, ['id', 'transactionid', 'reference', 'referenceid', 'externalid']) ||
+    ''
+  );
+}
+
+function readChargeStatus(data) {
+  return (
+    readFirstString(data, ['status', 'paymentStatus', 'payment_status']) ||
+    findNestedStringByKey(data, ['status', 'paymentstatus']) ||
+    ''
+  );
+}
+
+function readChargeAmount(data) {
+  return (
+    readFirstNumber(data, ['amount', 'value', 'total', 'totalAmount', 'total_amount']) ||
+    findNestedNumberByKey(data, ['amount', 'value', 'total', 'totalamount']) ||
+    0
+  );
+}
+
+function readChargeCreatedAt(data) {
+  return (
+    readFirstString(data, ['createdAt', 'created_at']) ||
+    findNestedStringByKey(data, ['createdat']) ||
+    null
+  );
+}
+
+function readChargeExpiresAt(data) {
+  return (
+    readFirstString(data, ['expiresAt', 'expirationDate', 'expires_at', 'expiration_date']) ||
+    findNestedStringByKey(data, ['expiresat', 'expirationdate']) ||
+    null
+  );
+}
+
+function readChargePaidAt(data) {
+  return (
+    readFirstString(data, ['paidAt', 'paid_at']) ||
+    findNestedStringByKey(data, ['paidat']) ||
+    null
+  );
+}
+
+function readFirstString(data, keys) {
+  for (const key of keys) {
+    const value = data?.[key];
+
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+function readFirstNumber(data, keys) {
+  for (const key of keys) {
+    const value = data?.[key];
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
+function readNestedString(data, paths) {
+  for (const path of paths) {
+    const value = path.reduce((current, key) => current?.[key], data);
+
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+function normalizeImageSource(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (normalized.startsWith('data:image/')) {
+    return normalized;
+  }
+
+  if (/^[A-Za-z0-9+/=]+$/.test(normalized)) {
+    return `data:image/png;base64,${normalized}`;
+  }
+
+  return normalized;
+}
+
+function findNestedStringByKey(data, normalizedKeys) {
+  return findNestedValueByKey(data, normalizedKeys, 'string') || '';
+}
+
+function findNestedNumberByKey(data, normalizedKeys) {
+  return findNestedValueByKey(data, normalizedKeys, 'number') || 0;
+}
+
+function findNestedValueByKey(data, normalizedKeys, expectedType, seen = new WeakSet()) {
+  if (!data || typeof data !== 'object') {
+    return expectedType === 'number' ? 0 : '';
+  }
+
+  if (seen.has(data)) {
+    return expectedType === 'number' ? 0 : '';
+  }
+
+  seen.add(data);
+
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const result = findNestedValueByKey(item, normalizedKeys, expectedType, seen);
+      if (result) {
+        return result;
+      }
+    }
+
+    return expectedType === 'number' ? 0 : '';
+  }
+
+  for (const [key, value] of Object.entries(data)) {
+    const normalizedKey = normalizeKey(key);
+
+    if (normalizedKeys.includes(normalizedKey)) {
+      if (expectedType === 'string' && typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+
+      if (expectedType === 'number') {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return value;
+        }
+
+        if (typeof value === 'string' && value.trim()) {
+          const parsed = Number(value);
+          if (Number.isFinite(parsed)) {
+            return parsed;
+          }
+        }
+      }
+    }
+
+    if (value && typeof value === 'object') {
+      const result = findNestedValueByKey(value, normalizedKeys, expectedType, seen);
+      if (result) {
+        return result;
+      }
+    }
+  }
+
+  return expectedType === 'number' ? 0 : '';
+}
+
+function normalizeKey(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 async function generateQrDataUrl(value) {

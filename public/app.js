@@ -21,6 +21,7 @@ const step3 = document.querySelector('#step-3');
 let pollTimer = null;
 
 form.addEventListener('submit', handleSubmit);
+submitButton.addEventListener('click', handleSubmit);
 resetButton.addEventListener('click', resetView);
 copyButton.addEventListener('click', copyCode);
 logoutButton?.addEventListener('click', logout);
@@ -36,14 +37,20 @@ function getPayload() {
 }
 
 async function handleSubmit(event) {
-  event.preventDefault();
+  event?.preventDefault();
+
+  if (!form.reportValidity()) {
+    return;
+  }
+
   stopPolling();
   setLoading(true);
-  setFeedback('Gerando o codigo...', 'warning');
+  setFeedback('Gerando o QR Code...', 'warning');
 
   try {
     const response = await fetch('/checkout/create', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json'
       },
@@ -53,7 +60,11 @@ async function handleSubmit(event) {
     const payload = await response.json();
 
     if (response.status === 401) {
-      window.location.href = '/login';
+      resetPaymentData();
+      setFeedback('Sua sessao expirou. Faca login novamente.', 'error');
+      window.setTimeout(() => {
+        window.location.href = '/login';
+      }, 1200);
       return;
     }
 
@@ -61,9 +72,13 @@ async function handleSubmit(event) {
       throw new Error(payload.error?.message || 'Nao foi possivel criar o codigo.');
     }
 
+    if (!hasQrPayload(payload.data)) {
+      throw new Error('A cobranca foi criada, mas o gateway nao retornou QR Code nem codigo copia e cola.');
+    }
+
     applyPayment(payload.data);
     startPollingIfNeeded(payload.data);
-    setFeedback('Codigo gerado com sucesso. Aguarde a confirmacao do pagamento.', 'success');
+    setFeedback('QR Code gerado com sucesso. Aguarde a confirmacao do pagamento.', 'success');
   } catch (error) {
     resetPaymentData();
     setFeedback(error.message, 'error');
@@ -102,6 +117,10 @@ function renderQrCode(imageSrc) {
       <img src="${imageSrc}" alt="Codigo de pagamento" />
     </div>
   `;
+}
+
+function hasQrPayload(payment) {
+  return Boolean(payment?.image || payment?.code);
 }
 
 function paintSteps(state) {
@@ -143,11 +162,16 @@ function startPollingIfNeeded(payment) {
 
   pollTimer = window.setInterval(async () => {
     try {
-      const response = await fetch(`/checkout/status/${encodeURIComponent(payment.reference)}`);
+      const response = await fetch(`/checkout/status/${encodeURIComponent(payment.reference)}`, {
+        credentials: 'same-origin'
+      });
       const payload = await response.json();
 
       if (response.status === 401) {
-        window.location.href = '/login';
+        setFeedback('Sua sessao expirou. Faca login novamente.', 'error');
+        window.setTimeout(() => {
+          window.location.href = '/login';
+        }, 1200);
         return;
       }
 
@@ -173,7 +197,9 @@ function startPollingIfNeeded(payment) {
 
 async function loadSession() {
   try {
-    const response = await fetch('/auth/session');
+    const response = await fetch('/auth/session', {
+      credentials: 'same-origin'
+    });
     const payload = await response.json();
 
     if (!response.ok || !payload.success) {
@@ -191,7 +217,7 @@ async function logout() {
   logoutButton.disabled = true;
 
   try {
-    await fetch('/auth/logout', { method: 'POST' });
+    await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
   } finally {
     window.location.href = '/login';
   }
@@ -253,7 +279,7 @@ function resetPaymentData() {
 
 function setLoading(isLoading) {
   submitButton.disabled = isLoading;
-  submitButton.textContent = isLoading ? 'Gerando...' : 'Gerar codigo';
+  submitButton.textContent = isLoading ? 'Gerando...' : 'Gerar QR Code';
 }
 
 function setFeedback(message, type) {

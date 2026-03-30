@@ -18,6 +18,7 @@ async function handleLogin(event) {
   try {
     const response = await fetch('/auth/login', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json'
       },

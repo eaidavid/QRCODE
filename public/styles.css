@@ -74,19 +74,19 @@ textarea {
   margin: 0 auto;
   min-height: 100vh;
   display: grid;
-  align-items: center;
-  padding: 24px 0;
+  align-items: start;
+  padding: 32px 0 24px;
 }
 
 .shell {
   width: min(1200px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 48px 0 64px;
+  padding: 32px 0 48px;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.15fr 0.9fr;
   gap: 28px;
-  align-items: center;
+  align-items: start;
 }
 
 .intro-panel,
@@ -246,12 +246,18 @@ h1 {
 }
 
 .submit-button {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
   min-height: 58px;
   border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: linear-gradient(135deg, #5be0a8 0%, #72d6f6 100%);
   color: #121313;
   font-weight: 700;
   margin-top: 4px;
+  box-shadow: 0 14px 30px rgba(91, 224, 168, 0.24);
 }
 
 .submit-button:hover,
@@ -338,8 +344,9 @@ h1 {
 .ghost-button {
   padding: 10px 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
 }
 
 .status-block {
@@ -481,7 +488,8 @@ h1 {
 .secondary-button {
   min-height: 48px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   color: var(--text);
 }
 
@@ -537,6 +545,35 @@ h1 {
 
   .shell-locked {
     padding-top: 24px;
+  }
+}
+
+@media (max-height: 820px) {
+  .auth-shell {
+    padding-top: 20px;
+  }
+
+  .shell {
+    padding-top: 20px;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 3vw, 3rem);
+    max-width: 14ch;
+  }
+
+  .lead,
+  .account-badge {
+    margin-top: 12px;
+  }
+
+  .deposit-form {
+    margin-top: 20px;
+  }
+
+  .intro-panel,
+  .auth-card {
+    padding: 24px;
   }
 }
 
