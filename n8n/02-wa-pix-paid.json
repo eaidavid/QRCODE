@@ -1,0 +1,123 @@
+{
+  "name": "PIX WhatsApp - Confirmacao Pagamento",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wa-pix-paid",
+        "responseMode": "responseNode"
+      },
+      "id": "1",
+      "name": "Webhook PodPay",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "wa-pix-paid"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst data = body.data || {};\nconst event = String(body.event || '').toLowerCase();\nconst status = String(data.status || '').toLowerCase();\nconst reference = String(data.id || body.reference || '').trim();\nconst approved = event.includes('completed') || status === 'paid' || status === 'completed';\nreturn [{ json: { approved, reference, raw: body } }];"
+      },
+      "id": "2",
+      "name": "Normalizar Webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{$json.approved}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Pagamento Aprovado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://SEU_DOMINIO/api/automation/status/{{$json.reference}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SEU_AUTOMATION_TOKEN"
+            }
+          ]
+        }
+      },
+      "id": "4",
+      "name": "Consultar Status API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const charge = $json.data || {};\nreturn [{ json: {\n  success: true,\n  reference: charge.reference || '',\n  state: charge.state || '',\n  replyText: `Pagamento confirmado ✅\\n\\nValor: ${charge.amountFormatted || ''}\\nReferencia: ${charge.reference || ''}`,\n  charge\n} }];"
+      },
+      "id": "5",
+      "name": "Montar Confirmacao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: true, ignored: true, replyText: 'Evento ignorado.' } }];"
+      },
+      "id": "6",
+      "name": "Ignorar Evento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"reference\": $json.reference || null,\n  \"replyText\": $json.replyText,\n  \"charge\": $json.charge || null,\n  \"ignored\": $json.ignored || false\n}"
+      },
+      "id": "7",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1420, 300]
+    }
+  ],
+  "connections": {
+    "Webhook PodPay": {
+      "main": [[{ "node": "Normalizar Webhook", "type": "main", "index": 0 }]]
+    },
+    "Normalizar Webhook": {
+      "main": [[{ "node": "Pagamento Aprovado?", "type": "main", "index": 0 }]]
+    },
+    "Pagamento Aprovado?": {
+      "main": [
+        [{ "node": "Consultar Status API", "type": "main", "index": 0 }],
+        [{ "node": "Ignorar Evento", "type": "main", "index": 0 }]
+      ]
+    },
+    "Consultar Status API": {
+      "main": [[{ "node": "Montar Confirmacao", "type": "main", "index": 0 }]]
+    },
+    "Montar Confirmacao": {
+      "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]]
+    },
+    "Ignorar Evento": {
+      "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]]
+    }
+  }
+}

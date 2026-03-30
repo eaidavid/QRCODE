@@ -35,6 +35,7 @@ const baseUrl =
   readEnv('REMOTE_URL', 'GATEWAY_BASE_URL', 'PODPAY_BASE_URL') ||
   (gatewayEnv === 'live' ? 'https://api.podpay.app' : 'https://sandbox.podpay.app');
 const sessionSecret = readEnv('APP_SECRET', 'SESSION_SECRET') || 'troque-este-segredo-local';
+const automationToken = readEnv('AUTOMATION_TOKEN', 'N8N_API_TOKEN', 'BOT_API_TOKEN');
 const appUrl = readEnv('APP_URL', 'PUBLIC_URL');
 const webhookSecret = readEnv('WEBHOOK_SECRET', 'PODPAY_WEBHOOK_SECRET');
 const defaultProfile = readDefaultProfile();
@@ -91,6 +92,15 @@ const checkoutSchema = z
       });
     }
   });
+
+const automationCreateChargeSchema = z.object({
+  operatorLogin: z.string().trim().min(3).max(64),
+  amount: z.union([z.number(), z.string()]),
+  customerName: z.string().trim().min(2).max(120).optional(),
+  customerPhone: z.string().trim().min(8).max(32).optional(),
+  externalId: z.string().trim().min(1).max(120).optional(),
+  note: z.string().trim().min(1).max(280).optional()
+});
 
 const webhookSchema = z
   .object({
@@ -185,6 +195,165 @@ app.get('/auth/session', requireAuth, (req, res) => {
       sessionReplaced: false
     }
   });
+});
+
+app.post(
+  '/api/automation/create-charge',
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Muitas requisicoes para automacao. Aguarde alguns segundos.'
+      }
+    }
+  }),
+  requireAutomationToken,
+  async (req, res) => {
+    const result = automationCreateChargeSchema.safeParse(req.body);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: result.error.issues[0]?.message || 'Dados invalidos para automacao.'
+        }
+      });
+    }
+
+    const account = findAccountByLogin(result.data.operatorLogin.trim().toLowerCase());
+
+    if (!account || account.active === false) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'OPERATOR_NOT_FOUND',
+          message: 'Operador nao encontrado ou inativo.'
+        }
+      });
+    }
+
+    const checkoutValidation = checkoutSchema.safeParse({ amount: result.data.amount });
+
+    if (!checkoutValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: checkoutValidation.error.issues[0]?.message || 'Valor invalido.'
+        }
+      });
+    }
+
+    if (!gatewayKey) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'CONFIG_ERROR',
+          message: 'A cobranca nao esta configurada no momento.'
+        }
+      });
+    }
+
+    const chargeProfile = resolveChargeProfile(account);
+    const profileError = getChargeProfileError(chargeProfile);
+
+    if (profileError) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'CONFIG_ERROR',
+          message: profileError
+        }
+      });
+    }
+
+    const payload = buildChargePayload(result.data.amount, chargeProfile);
+
+    try {
+      const gatewayResponse = await requestGateway('/v1/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Idempotency-Key': crypto.randomUUID()
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const charge = attachAutomationMeta(
+        attachChargeOwner(await mapCharge(gatewayResponse.data, gatewayResponse.meta), account),
+        result.data
+      );
+      rememberCharge(charge);
+
+      return res.json({
+        success: true,
+        data: buildAutomationChargeResponse(charge)
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || 'SERVICE_ERROR',
+          message: error.message || 'Nao foi possivel gerar o codigo agora.'
+        }
+      });
+    }
+  }
+);
+
+app.get('/api/automation/status/:reference', requireAutomationToken, async (req, res) => {
+  const reference = String(req.params.reference || '').trim();
+
+  if (!reference) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_REFERENCE',
+        message: 'Informe uma referencia valida.'
+      }
+    });
+  }
+
+  const cachedCharge = chargeCache.get(reference) || null;
+
+  if (!gatewayKey) {
+    if (cachedCharge) {
+      return res.json({ success: true, data: buildAutomationChargeResponse(cachedCharge) });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'CONFIG_ERROR',
+        message: 'A consulta nao esta disponivel no momento.'
+      }
+    });
+  }
+
+  try {
+    const gatewayResponse = await requestGateway(`/v1/transactions/${encodeURIComponent(reference)}`);
+    const charge = attachAutomationMeta(await mapCharge(gatewayResponse.data, gatewayResponse.meta), cachedCharge);
+    rememberCharge(charge);
+    return res.json({ success: true, data: buildAutomationChargeResponse(charge) });
+  } catch (error) {
+    if (cachedCharge) {
+      return res.json({ success: true, data: buildAutomationChargeResponse(cachedCharge) });
+    }
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: {
+        code: error.code || 'SERVICE_ERROR',
+        message: error.message || 'Nao foi possivel atualizar o status.'
+      }
+    });
+  }
 });
 
 app.post(
@@ -481,6 +650,7 @@ app.get('/health', (_req, res) => {
       status: 'ok',
       env: gatewayEnv,
       authConfigured: Boolean(sessionSecret),
+      automationConfigured: Boolean(automationToken),
       accountCount: accounts.filter((account) => account.active !== false).length,
       checkoutConfigured: Boolean(gatewayKey),
       webhookUrl: getWebhookUrl(),
@@ -595,6 +765,37 @@ function requireLocalAccess(req, res, next) {
   }
 
   return res.status(404).send('Nao encontrado.');
+}
+
+function requireAutomationToken(req, res, next) {
+  if (!automationToken) {
+    return res.status(503).json({
+      success: false,
+      error: {
+        code: 'AUTOMATION_DISABLED',
+        message: 'Automacao nao configurada no momento.'
+      }
+    });
+  }
+
+  const token = readBearerToken(req.headers.authorization || '');
+
+  if (!token || token !== automationToken) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Token de automacao invalido.'
+      }
+    });
+  }
+
+  return next();
+}
+
+function readBearerToken(value) {
+  const match = String(value || '').match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
 }
 
 function verifyWebhookSignature(req) {
@@ -869,6 +1070,10 @@ function rememberCharge(charge) {
     accountId: charge.accountId || previous?.accountId || '',
     accountLogin: charge.accountLogin || previous?.accountLogin || '',
     accountLabel: charge.accountLabel || previous?.accountLabel || '',
+    customerName: charge.customerName || previous?.customerName || '',
+    customerPhone: charge.customerPhone || previous?.customerPhone || '',
+    externalId: charge.externalId || previous?.externalId || '',
+    note: charge.note || previous?.note || '',
     updatedAt: charge.updatedAt || new Date().toISOString()
   });
 
@@ -901,6 +1106,52 @@ function attachChargeOwner(charge, account, previousCharge = null) {
     accountLogin: account?.login || previousCharge?.accountLogin || '',
     accountLabel: account?.label || account?.login || previousCharge?.accountLabel || previousCharge?.accountLogin || ''
   };
+}
+
+function attachAutomationMeta(charge, payload = {}) {
+  return {
+    ...charge,
+    customerName: payload.customerName || charge.customerName || '',
+    customerPhone: payload.customerPhone || charge.customerPhone || '',
+    externalId: payload.externalId || charge.externalId || '',
+    note: payload.note || charge.note || ''
+  };
+}
+
+function buildAutomationChargeResponse(charge) {
+  return {
+    reference: charge.reference,
+    state: charge.state,
+    amountCents: Number(charge.amountCents || 0),
+    amountFormatted: charge.amountFormatted || formatCents(Number(charge.amountCents || 0)),
+    code: charge.code || '',
+    image: charge.image || null,
+    createdAt: charge.createdAt || null,
+    expiresAt: charge.expiresAt || null,
+    paidAt: charge.paidAt || null,
+    operator: {
+      login: charge.accountLogin || '',
+      label: charge.accountLabel || charge.accountLogin || ''
+    },
+    customer: {
+      name: charge.customerName || '',
+      phone: charge.customerPhone || ''
+    },
+    externalId: charge.externalId || '',
+    note: charge.note || '',
+    message: buildAutomationShareMessage(charge)
+  };
+}
+
+function buildAutomationShareMessage(charge) {
+  const lines = [
+    `Pagamento ${charge.amountFormatted || formatCents(Number(charge.amountCents || 0))}`,
+    charge.code ? 'Use o codigo PIX abaixo para pagar:' : 'A cobranca foi criada e esta aguardando pagamento.',
+    charge.code || '',
+    charge.reference ? `Referencia: ${charge.reference}` : ''
+  ].filter(Boolean);
+
+  return lines.join('\n');
 }
 
 function canAccessCharge(account, charge) {

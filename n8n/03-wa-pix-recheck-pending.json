@@ -1,0 +1,111 @@
+{
+  "name": "PIX WhatsApp - Recheck Pendentes",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "A Cada 5 Minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { pendingReferences: [] } }];"
+      },
+      "id": "2",
+      "name": "Carregar Pendentes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "pendingReferences",
+        "options": {}
+      },
+      "id": "3",
+      "name": "Iterar Referencias",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://SEU_DOMINIO/api/automation/status/{{$json.pendingReferences}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SEU_AUTOMATION_TOKEN"
+            }
+          ]
+        }
+      },
+      "id": "4",
+      "name": "Consultar Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{$json.data.state}}",
+              "rightValue": "paid",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "5",
+      "name": "Ja Pagou?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1180, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const charge = $json.data || {};\nreturn [{ json: {\n  reference: charge.reference || '',\n  replyText: `Pagamento confirmado automaticamente ✅\\n\\nValor: ${charge.amountFormatted || ''}\\nReferencia: ${charge.reference || ''}`\n} }];"
+      },
+      "id": "6",
+      "name": "Montar Aviso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, 220]
+    }
+  ],
+  "connections": {
+    "A Cada 5 Minutos": {
+      "main": [[{ "node": "Carregar Pendentes", "type": "main", "index": 0 }]]
+    },
+    "Carregar Pendentes": {
+      "main": [[{ "node": "Iterar Referencias", "type": "main", "index": 0 }]]
+    },
+    "Iterar Referencias": {
+      "main": [[{ "node": "Consultar Status", "type": "main", "index": 0 }]]
+    },
+    "Consultar Status": {
+      "main": [[{ "node": "Ja Pagou?", "type": "main", "index": 0 }]]
+    },
+    "Ja Pagou?": {
+      "main": [[{ "node": "Montar Aviso", "type": "main", "index": 0 }], []]
+    }
+  }
+}

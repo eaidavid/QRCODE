@@ -1,0 +1,129 @@
+{
+  "name": "PIX WhatsApp - Entrada e Cobranca",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wa-pix-create",
+        "responseMode": "responseNode"
+      },
+      "id": "1",
+      "name": "Webhook Entrada",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "wa-pix-create"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst text = String(body.message || body.text || body.body || '').trim();\nconst phone = String(body.phone || body.from || '').trim();\nconst userName = String(body.userName || body.name || 'Cliente WhatsApp').trim();\nconst operatorLogin = String(body.operatorLogin || 'operador01').trim();\nconst groupId = String(body.groupId || body.chatId || '').trim();\nconst userId = String(body.userId || phone || '').trim();\nconst amountMatch = text.match(/(\\d+[\\.,]?\\d{0,2})/);\nconst amount = amountMatch ? amountMatch[1].replace('.', ',') : '';\nconst externalId = `${groupId || 'pv'}-${userId || 'user'}-${Date.now()}`;\nreturn [{ json: { text, phone, userName, operatorLogin, groupId, userId, amount, externalId } }];"
+      },
+      "id": "2",
+      "name": "Normalizar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{$json.amount}}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Tem Valor?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/automation/create-charge",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SEU_AUTOMATION_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"operatorLogin\": $json.operatorLogin,\n  \"amount\": $json.amount,\n  \"customerName\": $json.userName,\n  \"customerPhone\": $json.phone,\n  \"externalId\": $json.externalId,\n  \"note\": $json.text\n}"
+      },
+      "id": "4",
+      "name": "Criar Cobranca API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normalizar Mensagem').first().json;\nconst charge = $json.data || {};\nreturn [{ json: {\n  success: true,\n  phone: original.phone,\n  groupId: original.groupId,\n  userId: original.userId,\n  userName: original.userName,\n  externalId: original.externalId,\n  reference: charge.reference || '',\n  amount: charge.amountFormatted || '',\n  code: charge.code || '',\n  image: charge.image || '',\n  state: charge.state || 'pending',\n  replyText: charge.message || `Pagamento gerado com sucesso.\\n\\nValor: ${charge.amountFormatted || ''}\\nReferencia: ${charge.reference || ''}\\n\\nPIX copia e cola:\\n${charge.code || ''}`\n} }];"
+      },
+      "id": "5",
+      "name": "Montar Resposta PIX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Normalizar Mensagem').first().json;\nreturn [{ json: {\n  success: false,\n  phone: data.phone,\n  groupId: data.groupId,\n  userId: data.userId,\n  userName: data.userName,\n  replyText: 'Envie um valor valido. Exemplo: pix 150,00'\n} }];"
+      },
+      "id": "6",
+      "name": "Mensagem Sem Valor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": $json.success,\n  \"phone\": $json.phone,\n  \"groupId\": $json.groupId,\n  \"userId\": $json.userId,\n  \"userName\": $json.userName,\n  \"reference\": $json.reference || null,\n  \"externalId\": $json.externalId || null,\n  \"amount\": $json.amount || null,\n  \"code\": $json.code || null,\n  \"image\": $json.image || null,\n  \"state\": $json.state || null,\n  \"replyText\": $json.replyText\n}"
+      },
+      "id": "7",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1420, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Entrada": {
+      "main": [[{ "node": "Normalizar Mensagem", "type": "main", "index": 0 }]]
+    },
+    "Normalizar Mensagem": {
+      "main": [[{ "node": "Tem Valor?", "type": "main", "index": 0 }]]
+    },
+    "Tem Valor?": {
+      "main": [
+        [{ "node": "Criar Cobranca API", "type": "main", "index": 0 }],
+        [{ "node": "Mensagem Sem Valor", "type": "main", "index": 0 }]
+      ]
+    },
+    "Criar Cobranca API": {
+      "main": [[{ "node": "Montar Resposta PIX", "type": "main", "index": 0 }]]
+    },
+    "Montar Resposta PIX": {
+      "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]]
+    },
+    "Mensagem Sem Valor": {
+      "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]]
+    }
+  }
+}

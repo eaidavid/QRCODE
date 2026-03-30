@@ -61,6 +61,7 @@ PORT=3000
 APP_MODE=sandbox
 APP_URL=https://01pix.com
 APP_SECRET=troque_este_segredo_longo
+AUTOMATION_TOKEN=token_forte_para_n8n
 ACCESS_KEY=sua_chave_aqui
 WEBHOOK_SECRET=defina_um_segredo_no_dashboard
 RETURN_URL=
@@ -74,6 +75,38 @@ ITEM_NAME=Pagamento
 ```
 
 Se `RETURN_URL` ficar vazio, o sistema usa automaticamente `https://01pix.com/return/notify` quando `APP_URL=https://01pix.com`.
+
+## Automacao com n8n
+
+Use `AUTOMATION_TOKEN` para integrar com bot, WhatsApp e fluxos no n8n sem depender do login do painel.
+
+- `POST /api/automation/create-charge`
+- `GET /api/automation/status/:reference`
+- Header obrigatorio: `Authorization: Bearer SEU_TOKEN`
+
+Exemplo de criacao:
+
+```bash
+curl -X POST "http://localhost:3000/api/automation/create-charge" \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operatorLogin": "operador01",
+    "amount": "150,00",
+    "customerName": "Cliente WhatsApp",
+    "customerPhone": "5511999999999",
+    "externalId": "pedido-123",
+    "note": "Pedido vindo do n8n"
+  }'
+```
+
+Campos principais da resposta:
+
+- `reference`: referencia interna da cobranca
+- `code`: codigo PIX copia-e-cola
+- `image`: QR Code em data URL
+- `message`: texto pronto para enviar no WhatsApp
+- `operator`: operador dono da cobranca
 
 4. Inicie o projeto:
 
