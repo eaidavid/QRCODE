@@ -52,7 +52,8 @@ const contentSecurityPolicy = {
     objectSrc: ["'none'"],
     baseUri: ["'self'"],
     formAction: ["'self'"],
-    frameAncestors: ["'none'"]
+    frameAncestors: ["'none'"],
+    upgradeInsecureRequests: gatewayEnv === 'live' ? [] : null
   }
 };
 
