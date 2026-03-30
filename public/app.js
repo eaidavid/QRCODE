@@ -253,12 +253,14 @@ async function loadSession() {
     const payload = await response.json();
 
     if (!response.ok || !payload.success) {
+      stopSessionHeartbeat();
       window.location.href = '/login';
       return;
     }
 
     accountBadge.textContent = payload.data?.label || payload.data?.login || 'Acesso liberado';
   } catch {
+    stopSessionHeartbeat();
     window.location.href = '/login';
   }
 }
@@ -321,6 +323,8 @@ function setActivePanel(panel) {
 
 async function logout() {
   logoutButton.disabled = true;
+  stopSessionHeartbeat();
+  stopPolling();
 
   try {
     await fetch('/auth/logout', {
@@ -349,6 +353,7 @@ function startSessionHeartbeat() {
 
       if (response.status === 401) {
         stopSessionHeartbeat();
+        stopPolling();
         showToast('Sua conta entrou em outro dispositivo. Esta sessao foi encerrada.', 'error');
         window.setTimeout(() => {
           window.location.href = '/login';

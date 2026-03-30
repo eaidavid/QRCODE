@@ -133,22 +133,6 @@ app.use(
 app.use(attachSession);
 app.use(applySecurityHeaders);
 app.use(
-  '/auth',
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-      success: false,
-      error: {
-        code: 'RATE_LIMITED',
-        message: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.'
-      }
-    }
-  })
-);
-app.use(
   '/checkout',
   rateLimit({
     windowMs: 60 * 1000,
@@ -203,7 +187,23 @@ app.get('/auth/session', requireAuth, (req, res) => {
   });
 });
 
-app.post('/auth/login', requireSameOrigin, async (req, res) => {
+app.post(
+  '/auth/login',
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.'
+      }
+    }
+  }),
+  requireSameOrigin,
+  async (req, res) => {
   const result = loginSchema.safeParse(req.body);
 
   if (!result.success) {
@@ -270,7 +270,8 @@ app.post('/auth/login', requireSameOrigin, async (req, res) => {
       redirectTo: '/painel'
     }
   });
-});
+  }
+);
 
 app.post('/auth/logout', requireSameOrigin, (req, res) => {
   const cookies = parseCookies(req.headers.cookie || '');
