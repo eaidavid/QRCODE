@@ -28,6 +28,7 @@ const statementQrAmount = document.querySelector('#statement-qr-amount');
 const statementQrCreated = document.querySelector('#statement-qr-created');
 const statementQrCode = document.querySelector('#statement-qr-code');
 const statementCopyButton = document.querySelector('#statement-copy-button');
+const clientInstanceId = getClientInstanceId();
 
 const paymentReference = document.querySelector('#payment-reference');
 const paymentStatus = document.querySelector('#payment-status');
@@ -41,6 +42,7 @@ const step3 = document.querySelector('#step-3');
 let pollTimer = null;
 let toastTimer = null;
 let currentStatementItems = [];
+let sessionHeartbeatTimer = null;
 
 form.addEventListener('submit', handleSubmit);
 submitButton.addEventListener('click', handleSubmit);
@@ -60,6 +62,7 @@ window.addEventListener('keydown', handleWindowKeydown);
 loadSession();
 loadStatement();
 setActivePanel('deposit');
+startSessionHeartbeat();
 
 function getPayload() {
   const data = new FormData(form);
@@ -85,7 +88,8 @@ async function handleSubmit(event) {
       method: 'POST',
       credentials: 'same-origin',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Client-Instance': clientInstanceId
       },
       body: JSON.stringify(getPayload())
     });
@@ -202,7 +206,10 @@ function startPollingIfNeeded(payment) {
   pollTimer = window.setInterval(async () => {
     try {
       const response = await fetch(`/checkout/status/${encodeURIComponent(payment.reference)}`, {
-        credentials: 'same-origin'
+        credentials: 'same-origin',
+        headers: {
+          'X-Client-Instance': clientInstanceId
+        }
       });
       const payload = await response.json();
 
@@ -238,7 +245,10 @@ function startPollingIfNeeded(payment) {
 async function loadSession() {
   try {
     const response = await fetch('/auth/session', {
-      credentials: 'same-origin'
+      credentials: 'same-origin',
+      headers: {
+        'X-Client-Instance': clientInstanceId
+      }
     });
     const payload = await response.json();
 
@@ -260,7 +270,10 @@ async function loadStatement(silent = false) {
     }
 
     const response = await fetch(`/checkout/statement${buildStatementQuery()}`, {
-      credentials: 'same-origin'
+      credentials: 'same-origin',
+      headers: {
+        'X-Client-Instance': clientInstanceId
+      }
     });
     const payload = await response.json();
 
@@ -310,9 +323,47 @@ async function logout() {
   logoutButton.disabled = true;
 
   try {
-    await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    await fetch('/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'X-Client-Instance': clientInstanceId
+      }
+    });
   } finally {
     window.location.href = '/login';
+  }
+}
+
+function startSessionHeartbeat() {
+  stopSessionHeartbeat();
+
+  sessionHeartbeatTimer = window.setInterval(async () => {
+    try {
+      const response = await fetch('/auth/session', {
+        credentials: 'same-origin',
+        headers: {
+          'X-Client-Instance': clientInstanceId
+        }
+      });
+
+      if (response.status === 401) {
+        stopSessionHeartbeat();
+        showToast('Sua conta entrou em outro dispositivo. Esta sessao foi encerrada.', 'error');
+        window.setTimeout(() => {
+          window.location.href = '/login';
+        }, 1200);
+      }
+    } catch {
+      // ignore transient network issues
+    }
+  }, 3000);
+}
+
+function stopSessionHeartbeat() {
+  if (sessionHeartbeatTimer) {
+    window.clearInterval(sessionHeartbeatTimer);
+    sessionHeartbeatTimer = null;
   }
 }
 
@@ -585,6 +636,18 @@ function escapeHtmlAttribute(value) {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function getClientInstanceId() {
+  const existing = window.sessionStorage.getItem('client-instance-id');
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.sessionStorage.setItem('client-instance-id', created);
+  return created;
 }
 
 resetPaymentData();

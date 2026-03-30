@@ -1,6 +1,7 @@
 const form = document.querySelector('#login-form');
 const button = document.querySelector('#login-button');
 const feedback = document.querySelector('#login-feedback');
+const clientInstanceId = getClientInstanceId();
 
 form.addEventListener('submit', handleLogin);
 
@@ -20,7 +21,8 @@ async function handleLogin(event) {
       method: 'POST',
       credentials: 'same-origin',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Client-Instance': clientInstanceId
       },
       body: JSON.stringify(payload)
     });
@@ -48,4 +50,16 @@ function setLoading(isLoading) {
 function setFeedback(message, type) {
   feedback.textContent = message;
   feedback.className = `feedback${type ? ` ${type}` : ''}`;
+}
+
+function getClientInstanceId() {
+  const existing = window.sessionStorage.getItem('client-instance-id');
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.sessionStorage.setItem('client-instance-id', created);
+  return created;
 }

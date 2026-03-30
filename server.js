@@ -24,6 +24,7 @@ const port = Number(process.env.PORT || 3000);
 
 const SESSION_COOKIE = 'panel_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const CLIENT_INSTANCE_HEADER = 'x-client-instance';
 const MIN_DEPOSIT_CENTS = 100;
 const MAX_DEPOSIT_CENTS = 1_500_000;
 
@@ -41,6 +42,7 @@ const chargeStoreFile = path.join(__dirname, 'data', 'charges.json');
 
 const chargeCache = loadChargeCache();
 const webhookEvents = new Map();
+const activeSessions = new Map();
 
 const publicDir = path.join(__dirname, 'public');
 const viewsDir = path.join(__dirname, 'views');
@@ -195,7 +197,8 @@ app.get('/auth/session', requireAuth, (req, res) => {
     success: true,
     data: {
       login: req.account.login,
-      label: req.account.label || req.account.login
+      label: req.account.label || req.account.login,
+      sessionReplaced: false
     }
   });
 });
@@ -238,7 +241,19 @@ app.post('/auth/login', requireSameOrigin, async (req, res) => {
     });
   }
 
-  const token = createSession(account.id);
+  const clientInstanceId = readClientInstanceId(req);
+
+  if (!clientInstanceId) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_SESSION_CONTEXT',
+        message: 'Instancia do dispositivo ausente.'
+      }
+    });
+  }
+
+  const token = createSession(account.id, clientInstanceId);
   setCookie(res, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'Strict',
@@ -258,6 +273,17 @@ app.post('/auth/login', requireSameOrigin, async (req, res) => {
 });
 
 app.post('/auth/logout', requireSameOrigin, (req, res) => {
+  const cookies = parseCookies(req.headers.cookie || '');
+  const token = cookies[SESSION_COOKIE];
+
+  if (token) {
+    const session = verifySessionToken(token);
+
+    if (session && activeSessions.get(session.accountId) === session.sessionId) {
+      activeSessions.delete(session.accountId);
+    }
+  }
+
   clearCookie(res, SESSION_COOKIE, {
     httpOnly: true,
     sameSite: 'Strict',
@@ -492,6 +518,14 @@ function attachSession(req, _res, next) {
     return next();
   }
 
+  if (activeSessions.get(session.accountId) !== session.sessionId) {
+    return next();
+  }
+
+  if (requiresClientInstance(req) && session.clientInstanceId !== readClientInstanceId(req)) {
+    return next();
+  }
+
   const account = findAccountById(session.accountId);
 
   if (!account || account.active === false) {
@@ -630,9 +664,15 @@ function requirePageAuth(req, res, next) {
   return next();
 }
 
-function createSession(accountId) {
+function createSession(accountId, clientInstanceId) {
+  const sessionId = crypto.randomUUID();
+
+  activeSessions.set(accountId, sessionId);
+
   return signSessionToken({
     accountId,
+    sessionId,
+    clientInstanceId,
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS
   });
@@ -669,7 +709,7 @@ function verifySessionToken(token) {
   try {
     const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
 
-    if (!session?.accountId || !session?.expiresAt || session.expiresAt <= Date.now()) {
+    if (!session?.accountId || !session?.sessionId || !session?.clientInstanceId || !session?.expiresAt || session.expiresAt <= Date.now()) {
       return null;
     }
 
@@ -760,6 +800,14 @@ function shouldUseSecureCookie(req) {
   }
 
   return gatewayEnv === 'live' && !isLocalHost;
+}
+
+function requiresClientInstance(req) {
+  return req.path === '/auth/session' || req.path.startsWith('/checkout') || req.path === '/auth/logout';
+}
+
+function readClientInstanceId(req) {
+  return String(req.headers[CLIENT_INSTANCE_HEADER] || '').trim();
 }
 
 function loadChargeCache() {
