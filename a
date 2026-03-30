@@ -1,0 +1,39 @@
+curl -X POST "https://eaidavida.app.n8n.cloud/webhook-test/wa-pix-create" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "pix de 1000",
+    "phone": "5511999999999",
+    "userName": "Cliente Teste",
+    "operatorLogin": "operador01",
+    "groupId": "grupo-01",
+    "userId": "usuario-01"
+  }'
+
+curl -X POST "http://01pix.com/api/automation/create-charge" ^
+  -H "Authorization: Bearer SEU_AUTOMATION_TOKEN" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"operatorLogin\":\"operador19\",\"amount\":\"100,00\"}"
+
+curl -X POST "https://eaidavida.app.n8n.cloud/webhook-test/wa-pix-create" ^
+  -H "Authorization: Bearer 890c5be7b4d2d0fbdfe68b65661b16a7848536e5c2f4fcded3f004d4c0c86ce8" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"operatorLogin\":\"operador19\",\"amount\":\"100,00\",\"customerName\":\"Cliente Teste\",\"customerPhone\":\"5511999999999\",\"externalId\":\"pedido-123\",\"note\":\"Teste local\"}"
+890c5be7b4d2d0fbdfe68b65661b16a7848536e5c2f4fcded3f004d4c0c86ce8
+
+N8N_HOST=n8n.01pix.com
+N8N_PORT=5678
+N8N_PROTOCOL=https
+NODE_ENV=production
+WEBHOOK_URL=https://n8n.01pix.com/
+N8N_EDITOR_BASE_URL=https://n8n.01pix.com/
+N8N_SECURE_COOKIE=true
+
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=localhost
+DB_POSTGRESDB_PORT=5432
+DB_POSTGRESDB_DATABASE=qrcode_bot
+DB_POSTGRESDB_USER=qrcode_user
+DB_POSTGRESDB_PASSWORD=QrCodeBot@2026#Forte
+
+​x2VZ2c8Y8fO
+85.239.231.7

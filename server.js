@@ -27,6 +27,7 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const CLIENT_INSTANCE_HEADER = 'x-client-instance';
 const MIN_DEPOSIT_CENTS = 100;
 const MAX_DEPOSIT_CENTS = 1_500_000;
+const DEFAULT_AUTOMATION_OPERATOR = 'operador01';
 
 const gatewayKey = readEnv('ACCESS_KEY', 'GATEWAY_API_KEY', 'PODPAY_API_KEY');
 const gatewayMode = readEnv('APP_MODE', 'GATEWAY_ENV', 'PODPAY_ENV');
@@ -94,7 +95,7 @@ const checkoutSchema = z
   });
 
 const automationCreateChargeSchema = z.object({
-  operatorLogin: z.string().trim().min(3).max(64),
+  operatorLogin: z.string().trim().min(3).max(64).optional(),
   amount: z.union([z.number(), z.string()]),
   customerName: z.string().trim().min(2).max(120).optional(),
   customerPhone: z.string().trim().min(8).max(32).optional(),
@@ -226,7 +227,8 @@ app.post(
       });
     }
 
-    const account = findAccountByLogin(result.data.operatorLogin.trim().toLowerCase());
+    const operatorLogin = String(result.data.operatorLogin || DEFAULT_AUTOMATION_OPERATOR).trim().toLowerCase();
+    const account = findAccountByLogin(operatorLogin);
 
     if (!account || account.active === false) {
       return res.status(404).json({
@@ -1074,6 +1076,8 @@ function rememberCharge(charge) {
     customerPhone: charge.customerPhone || previous?.customerPhone || '',
     externalId: charge.externalId || previous?.externalId || '',
     note: charge.note || previous?.note || '',
+    source: charge.source || previous?.source || 'panel',
+    sourceLabel: charge.sourceLabel || previous?.sourceLabel || 'Painel',
     updatedAt: charge.updatedAt || new Date().toISOString()
   });
 
@@ -1111,6 +1115,8 @@ function attachChargeOwner(charge, account, previousCharge = null) {
 function attachAutomationMeta(charge, payload = {}) {
   return {
     ...charge,
+    source: 'bot',
+    sourceLabel: 'Bot',
     customerName: payload.customerName || charge.customerName || '',
     customerPhone: payload.customerPhone || charge.customerPhone || '',
     externalId: payload.externalId || charge.externalId || '',

@@ -465,6 +465,7 @@ function renderStatement(data) {
           <div>
             <strong>${item.amountFormatted || formatCents(item.amountCents || 0)}</strong>
             <span>${formatStatus(item.state)} - ${formatDateTime(item.createdAt)}</span>
+            ${item.source === 'bot' ? '<span class="statement-tag bot">Bot</span>' : ''}
           </div>
           <div class="statement-meta">
             <span>${shortId(item.reference)}</span>
