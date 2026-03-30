@@ -95,7 +95,6 @@ const checkoutSchema = z
   });
 
 const automationCreateChargeSchema = z.object({
-  operatorLogin: z.string().trim().min(3).max(64).optional(),
   amount: z.union([z.number(), z.string()]),
   customerName: z.string().trim().min(2).max(120).optional(),
   customerPhone: z.string().trim().min(8).max(32).optional(),
@@ -227,7 +226,7 @@ app.post(
       });
     }
 
-    const operatorLogin = String(result.data.operatorLogin || DEFAULT_AUTOMATION_OPERATOR).trim().toLowerCase();
+    const operatorLogin = DEFAULT_AUTOMATION_OPERATOR;
     const account = findAccountByLogin(operatorLogin);
 
     if (!account || account.active === false) {
