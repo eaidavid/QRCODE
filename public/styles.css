@@ -37,6 +37,10 @@ body {
   overflow-x: hidden;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 button,
 input,
 select,
@@ -69,6 +73,44 @@ textarea {
   background: rgba(232, 176, 81, 0.14);
 }
 
+.toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translate(-50%, -16px);
+  min-width: min(520px, calc(100% - 24px));
+  max-width: calc(100% - 24px);
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(17, 17, 15, 0.92);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 60;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast.success {
+  border-color: rgba(91, 224, 168, 0.28);
+}
+
+.toast.warning {
+  border-color: rgba(240, 198, 107, 0.28);
+}
+
+.toast.error {
+  border-color: rgba(255, 141, 114, 0.3);
+}
+
 .auth-shell {
   width: min(520px, calc(100% - 24px));
   margin: 0 auto;
@@ -83,6 +125,22 @@ textarea {
   margin: 0 auto;
   padding: 32px 0 48px;
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.15fr 0.9fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.panel-shell {
+  display: block;
+}
+
+.workspace-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.deposit-layout {
   display: grid;
   grid-template-columns: 1.15fr 0.9fr;
   gap: 28px;
@@ -280,6 +338,54 @@ h1 {
   gap: 14px;
 }
 
+.top-nav-shell {
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(20, 20, 18, 0.88), rgba(12, 12, 11, 0.94));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.top-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.panel-tabs {
+  display: inline-flex;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+}
+
+.panel-tab {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.panel-tab.active {
+  background: linear-gradient(135deg, rgba(91, 224, 168, 0.2), rgba(114, 214, 246, 0.18));
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.panel-view {
+  display: none;
+  gap: 24px;
+}
+
+.panel-view.active {
+  display: grid;
+}
+
 .panel-topbar .eyebrow {
   margin-bottom: 0;
 }
@@ -316,10 +422,6 @@ h1 {
 .card-panel {
   display: flex;
   justify-content: center;
-}
-
-.statement-panel {
-  grid-column: 1 / -1;
 }
 
 .deposit-card {
@@ -540,6 +642,50 @@ h1 {
   font-family: 'IBM Plex Mono', monospace;
 }
 
+.statement-open-button {
+  justify-self: end;
+}
+
+.qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.qr-modal[hidden] {
+  display: none;
+}
+
+.qr-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 5, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.qr-modal-card {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border-radius: 28px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(18, 18, 17, 0.95), rgba(10, 10, 9, 0.98));
+  box-shadow: var(--shadow);
+}
+
+.statement-qr-stage {
+  min-height: 320px;
+}
+
+.statement-qr-details {
+  margin-top: 18px;
+}
+
 .detail {
   display: grid;
   gap: 7px;
@@ -618,6 +764,24 @@ h1 {
     padding-top: 24px;
   }
 
+  .top-nav-shell,
+  .top-nav-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .deposit-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-tabs {
+    width: 100%;
+  }
+
+  .panel-tab {
+    flex: 1;
+  }
+
   .intro-panel {
     padding: 28px;
   }
@@ -667,6 +831,14 @@ h1 {
     padding-bottom: 28px;
   }
 
+  .top-nav-shell {
+    padding: 16px;
+  }
+
+  .deposit-layout {
+    gap: 18px;
+  }
+
   .intro-panel,
   .deposit-card {
     border-radius: 24px;
@@ -699,6 +871,10 @@ h1 {
 
   .statement-meta {
     text-align: left;
+  }
+
+  .statement-open-button {
+    justify-self: start;
   }
 
   .statement-filter-actions {

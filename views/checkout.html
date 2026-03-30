@@ -11,39 +11,52 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=7" />
-    <script src="/app.js?v=7" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=9" />
+    <script src="/app.js?v=9" defer></script>
   </head>
   <body>
     <div class="ambient ambient-a"></div>
     <div class="ambient ambient-b"></div>
+    <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
-    <main class="shell shell-locked">
-      <section class="intro-panel reveal">
-        <div class="panel-topbar">
-          <div class="eyebrow">PAINEL</div>
-          <button id="logout-button" class="ghost-button" type="button">Sair</button>
-        </div>
-        <h1>Informe o valor e gere o codigo em segundos.</h1>
-        <p class="lead">Uma tela limpa para criar a cobranca e acompanhar o pagamento sem distracoes.</p>
-        <p class="account-badge" id="account-badge">Carregando acesso...</p>
-        <p class="security-note"><span></span>Depositos liberados apenas entre R$ 1,00 e R$ 15.000,00, com sessao protegida e rotas internas blindadas.</p>
-
-        <form id="deposit-form" class="deposit-form">
-          <div class="field wide">
-            <label for="amount">Valor</label>
-            <div class="input-shell money-shell">
-              <span>R$</span>
-              <input id="amount" name="amount" type="text" inputmode="decimal" placeholder="100,00" required />
-            </div>
+    <main class="shell shell-locked panel-shell">
+      <section class="workspace-panel reveal">
+        <div class="panel-topbar top-nav-shell">
+          <div>
+            <div class="eyebrow">PAINEL</div>
+            <p class="account-badge" id="account-badge">Carregando acesso...</p>
           </div>
+          <div class="top-nav-actions">
+            <nav class="panel-tabs" aria-label="Navegacao do painel">
+              <button class="panel-tab active" id="tab-deposit" type="button" data-panel="deposit">Deposito</button>
+              <button class="panel-tab" id="tab-statement" type="button" data-panel="statement">Extrato</button>
+            </nav>
+            <button id="logout-button" class="ghost-button" type="button">Sair</button>
+          </div>
+        </div>
 
-          <button id="submit-button" class="submit-button" type="button">Gerar QR Code</button>
-        </form>
-      </section>
+        <section class="panel-view active" id="panel-deposit" data-panel-view="deposit">
+          <div class="deposit-layout">
+            <section class="intro-panel">
+              <h1>Informe o valor e gere o codigo em segundos.</h1>
+              <p class="lead">Uma tela limpa para criar a cobranca e acompanhar o pagamento sem distracoes.</p>
+              <p class="security-note"><span></span>Depositos liberados apenas entre R$ 1,00 e R$ 15.000,00, com sessao protegida e rotas internas blindadas.</p>
 
-      <section class="card-panel reveal delay-1">
-        <article class="deposit-card">
+              <form id="deposit-form" class="deposit-form">
+                <div class="field wide">
+                  <label for="amount">Valor</label>
+                  <div class="input-shell money-shell">
+                    <span>R$</span>
+                    <input id="amount" name="amount" type="text" inputmode="decimal" placeholder="100,00" required />
+                  </div>
+                </div>
+
+                <button id="submit-button" class="submit-button" type="button">Gerar QR Code</button>
+              </form>
+            </section>
+
+            <section class="card-panel reveal delay-1">
+            <article class="deposit-card">
           <div class="card-header">
             <div>
               <p class="card-kicker">Pagamento</p>
@@ -108,12 +121,13 @@
             <button id="copy-button" class="secondary-button" type="button" disabled>Copiar</button>
           </div>
 
-          <p id="feedback" class="feedback">Informe um valor para continuar.</p>
-        </article>
-      </section>
+            </article>
+            </section>
+          </div>
+        </section>
 
-      <section class="statement-panel reveal delay-1">
-        <article class="statement-card">
+        <section class="panel-view" id="panel-statement" data-panel-view="statement">
+          <article class="statement-card reveal delay-1">
           <div class="card-header statement-header">
             <div>
               <p class="card-kicker">Extrato</p>
@@ -184,8 +198,54 @@
           <div class="statement-list" id="statement-list">
             <div class="statement-empty">Nenhum deposito registrado para este operador ainda.</div>
           </div>
-        </article>
+          </article>
+        </section>
       </section>
     </main>
+
+    <div class="qr-modal" id="statement-qr-modal" hidden>
+      <div class="qr-modal-backdrop" data-close-qr-modal="true"></div>
+      <article class="qr-modal-card">
+        <div class="card-header">
+          <div>
+            <p class="card-kicker">QR do extrato</p>
+            <h2 id="statement-qr-title">Deposito selecionado</h2>
+          </div>
+          <button class="ghost-button" id="close-qr-modal-button" type="button">Fechar</button>
+        </div>
+
+        <div class="qr-stage statement-qr-stage" id="statement-qr-stage">
+          <div class="qr-placeholder">
+            <span>QR Code</span>
+            <p>Nenhum QR disponivel para esta cobranca.</p>
+          </div>
+        </div>
+
+        <div class="details-grid statement-qr-details">
+          <div class="detail">
+            <span>Referencia</span>
+            <strong id="statement-qr-reference">-</strong>
+          </div>
+          <div class="detail">
+            <span>Status</span>
+            <strong id="statement-qr-status">-</strong>
+          </div>
+          <div class="detail">
+            <span>Valor</span>
+            <strong id="statement-qr-amount">-</strong>
+          </div>
+          <div class="detail">
+            <span>Gerado em</span>
+            <strong id="statement-qr-created">-</strong>
+          </div>
+        </div>
+
+        <div class="copy-block">
+          <label for="statement-qr-code">Codigo para copiar</label>
+          <textarea id="statement-qr-code" rows="4" readonly placeholder="O codigo aparecera aqui."></textarea>
+          <button id="statement-copy-button" class="secondary-button" type="button" disabled>Copiar codigo</button>
+        </div>
+      </article>
+    </div>
   </body>
 </html>

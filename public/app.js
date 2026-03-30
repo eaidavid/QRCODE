@@ -6,7 +6,7 @@ const logoutButton = document.querySelector('#logout-button');
 const refreshStatementButton = document.querySelector('#refresh-statement-button');
 const clearFiltersButton = document.querySelector('#clear-filters-button');
 const accountBadge = document.querySelector('#account-badge');
-const feedback = document.querySelector('#feedback');
+const toast = document.querySelector('#toast');
 const qrStage = document.querySelector('#qr-stage');
 const paymentCode = document.querySelector('#payment-code');
 const cardTitle = document.querySelector('#card-title');
@@ -16,6 +16,18 @@ const statementTotalPaid = document.querySelector('#statement-total-paid');
 const statementTotalCount = document.querySelector('#statement-total-count');
 const statementPaidCount = document.querySelector('#statement-paid-count');
 const statementFiltersForm = document.querySelector('#statement-filters');
+const panelTabs = [...document.querySelectorAll('.panel-tab')];
+const panelViews = [...document.querySelectorAll('.panel-view')];
+const statementQrModal = document.querySelector('#statement-qr-modal');
+const closeQrModalButton = document.querySelector('#close-qr-modal-button');
+const statementQrStage = document.querySelector('#statement-qr-stage');
+const statementQrTitle = document.querySelector('#statement-qr-title');
+const statementQrReference = document.querySelector('#statement-qr-reference');
+const statementQrStatus = document.querySelector('#statement-qr-status');
+const statementQrAmount = document.querySelector('#statement-qr-amount');
+const statementQrCreated = document.querySelector('#statement-qr-created');
+const statementQrCode = document.querySelector('#statement-qr-code');
+const statementCopyButton = document.querySelector('#statement-copy-button');
 
 const paymentReference = document.querySelector('#payment-reference');
 const paymentStatus = document.querySelector('#payment-status');
@@ -27,6 +39,8 @@ const step2 = document.querySelector('#step-2');
 const step3 = document.querySelector('#step-3');
 
 let pollTimer = null;
+let toastTimer = null;
+let currentStatementItems = [];
 
 form.addEventListener('submit', handleSubmit);
 submitButton.addEventListener('click', handleSubmit);
@@ -36,9 +50,16 @@ logoutButton?.addEventListener('click', logout);
 refreshStatementButton?.addEventListener('click', loadStatement);
 statementFiltersForm?.addEventListener('submit', handleStatementFilterSubmit);
 clearFiltersButton?.addEventListener('click', clearStatementFilters);
+panelTabs.forEach((tab) => tab.addEventListener('click', () => setActivePanel(tab.dataset.panel)));
+statementList?.addEventListener('click', handleStatementListClick);
+closeQrModalButton?.addEventListener('click', closeStatementQrModal);
+statementQrModal?.addEventListener('click', handleQrModalBackdropClick);
+statementCopyButton?.addEventListener('click', copyStatementCode);
+window.addEventListener('keydown', handleWindowKeydown);
 
 loadSession();
 loadStatement();
+setActivePanel('deposit');
 
 function getPayload() {
   const data = new FormData(form);
@@ -57,7 +78,7 @@ async function handleSubmit(event) {
 
   stopPolling();
   setLoading(true);
-  setFeedback('Gerando o QR Code...', 'warning');
+  showToast('Gerando o QR Code...', 'warning');
 
   try {
     const response = await fetch('/checkout/create', {
@@ -73,7 +94,7 @@ async function handleSubmit(event) {
 
     if (response.status === 401) {
       resetPaymentData();
-      setFeedback('Sua sessao expirou. Faca login novamente.', 'error');
+      showToast('Sua sessao expirou. Faca login novamente.', 'error');
       window.setTimeout(() => {
         window.location.href = '/login';
       }, 1200);
@@ -91,10 +112,10 @@ async function handleSubmit(event) {
     applyPayment(payload.data);
     startPollingIfNeeded(payload.data);
     loadStatement();
-    setFeedback('QR Code gerado com sucesso. Aguarde a confirmacao do pagamento.', 'success');
+    showToast('QR Code gerado com sucesso. Aguarde a confirmacao do pagamento.', 'success');
   } catch (error) {
     resetPaymentData();
-    setFeedback(error.message, 'error');
+    showToast(error.message, 'error');
   } finally {
     setLoading(false);
   }
@@ -109,11 +130,11 @@ function applyPayment(payment) {
   paymentCode.value = payment.code || '';
   copyButton.disabled = !payment.code;
 
-  renderQrCode(payment.image);
+  renderQrCode(payment.image, payment);
   paintSteps(payment.state);
 }
 
-function renderQrCode(imageSrc) {
+function renderQrCode(imageSrc, payment = null) {
   if (!imageSrc) {
     qrStage.innerHTML = `
       <div class="qr-placeholder">
@@ -121,6 +142,11 @@ function renderQrCode(imageSrc) {
         <p>A imagem nao ficou disponivel para esta cobranca.</p>
       </div>
     `;
+
+    if (payment?.code) {
+      showToast('QR visual indisponivel no momento. Use o codigo copia e cola desta cobranca.', 'warning');
+    }
+
     return;
   }
 
@@ -181,7 +207,7 @@ function startPollingIfNeeded(payment) {
       const payload = await response.json();
 
       if (response.status === 401) {
-        setFeedback('Sua sessao expirou. Faca login novamente.', 'error');
+        showToast('Sua sessao expirou. Faca login novamente.', 'error');
         window.setTimeout(() => {
           window.location.href = '/login';
         }, 1200);
@@ -200,11 +226,11 @@ function startPollingIfNeeded(payment) {
       }
 
       if (String(payload.data.state).toLowerCase() === 'paid') {
-        setFeedback('Pagamento confirmado com sucesso.', 'success');
+        showToast('Pagamento confirmado com sucesso.', 'success');
       }
     } catch (error) {
       stopPolling();
-      setFeedback(error.message, 'error');
+      showToast(error.message, 'error');
     }
   }, 5000);
 }
@@ -240,7 +266,7 @@ async function loadStatement(silent = false) {
 
     if (response.status === 401) {
       if (!silent) {
-        setFeedback('Sua sessao expirou. Faca login novamente.', 'error');
+        showToast('Sua sessao expirou. Faca login novamente.', 'error');
       }
       return;
     }
@@ -252,7 +278,7 @@ async function loadStatement(silent = false) {
     renderStatement(payload.data);
   } catch (error) {
     if (!silent) {
-      setFeedback(error.message, 'error');
+      showToast(error.message, 'error');
     }
   } finally {
     if (refreshStatementButton) {
@@ -269,6 +295,15 @@ function handleStatementFilterSubmit(event) {
 function clearStatementFilters() {
   statementFiltersForm?.reset();
   loadStatement();
+}
+
+function setActivePanel(panel) {
+  panelTabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.panel === panel));
+  panelViews.forEach((view) => view.classList.toggle('active', view.dataset.panelView === panel));
+
+  if (panel === 'statement') {
+    loadStatement(true);
+  }
 }
 
 async function logout() {
@@ -295,9 +330,9 @@ async function copyCode() {
 
   try {
     await navigator.clipboard.writeText(paymentCode.value);
-    setFeedback('Codigo copiado.', 'success');
+    showToast('Codigo copiado.', 'success');
   } catch {
-    setFeedback('Nao foi possivel copiar automaticamente. Copie manualmente o codigo.', 'warning');
+    showToast('Nao foi possivel copiar automaticamente. Copie manualmente o codigo.', 'warning');
   }
 }
 
@@ -305,7 +340,7 @@ function resetView() {
   stopPolling();
   form.reset();
   resetPaymentData();
-  setFeedback('Informe um valor para continuar.', '');
+  showToast('Formulario limpo. Informe um valor para continuar.', 'warning');
 }
 
 function resetPaymentData() {
@@ -335,8 +370,26 @@ function resetPaymentData() {
   `;
 }
 
+function showToast(message, type) {
+  if (!toast) {
+    return;
+  }
+
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+  }
+
+  toast.textContent = message;
+  toast.className = `toast show${type ? ` ${type}` : ''}`;
+
+  toastTimer = window.setTimeout(() => {
+    toast.className = 'toast';
+  }, 3600);
+}
+
 function renderStatement(data) {
   const items = Array.isArray(data?.items) ? data.items : [];
+  currentStatementItems = items;
   const summary = data?.summary || {};
 
   statementTotalGenerated.textContent = formatCents(summary.totalGeneratedCents || 0);
@@ -360,6 +413,7 @@ function renderStatement(data) {
           <div class="statement-meta">
             <span>${shortId(item.reference)}</span>
             <span>${item.accountLabel || item.accountLogin || '-'}</span>
+            <button class="ghost-button statement-open-button" type="button" data-reference="${escapeHtmlAttribute(item.reference || '')}">Ver QR</button>
           </div>
         </article>
       `
@@ -385,11 +439,6 @@ function buildStatementQuery() {
 function setLoading(isLoading) {
   submitButton.disabled = isLoading;
   submitButton.textContent = isLoading ? 'Gerando...' : 'Gerar QR Code';
-}
-
-function setFeedback(message, type) {
-  feedback.textContent = message;
-  feedback.className = `feedback${type ? ` ${type}` : ''}`;
 }
 
 function formatStatus(status) {
@@ -441,6 +490,101 @@ function shortId(value) {
 
 function getCardTitle(state) {
   return String(state).toLowerCase() === 'paid' ? 'Pagamento confirmado' : 'Pagamento em aberto';
+}
+
+function handleStatementListClick(event) {
+  const button = event.target.closest('.statement-open-button');
+
+  if (!button) {
+    return;
+  }
+
+  const reference = button.dataset.reference || '';
+  const item = currentStatementItems.find((entry) => entry.reference === reference);
+
+  if (!item) {
+    showToast('Nao foi possivel localizar este QR no extrato.', 'error');
+    return;
+  }
+
+  openStatementQrModal(item);
+}
+
+function openStatementQrModal(item) {
+  statementQrModal.hidden = false;
+  document.body.classList.add('modal-open');
+  statementQrTitle.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
+  statementQrReference.textContent = shortId(item.reference);
+  statementQrStatus.textContent = formatStatus(item.state);
+  statementQrAmount.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
+  statementQrCreated.textContent = formatDateTime(item.createdAt);
+  statementQrCode.value = item.code || '';
+  statementCopyButton.disabled = !item.code;
+  renderStatementQrCode(item.image, item);
+}
+
+function closeStatementQrModal() {
+  statementQrModal.hidden = true;
+  document.body.classList.remove('modal-open');
+}
+
+function renderStatementQrCode(imageSrc, item = null) {
+  if (!imageSrc) {
+    statementQrStage.innerHTML = `
+      <div class="qr-placeholder">
+        <span>QR Code</span>
+        <p>Nenhum QR disponivel para esta cobranca.</p>
+      </div>
+    `;
+
+    if (item?.code) {
+      showToast('Este deposito nao tem imagem de QR disponivel. Use o codigo copia e cola.', 'warning');
+    } else {
+      showToast('Este deposito nao possui QR Code disponivel.', 'error');
+    }
+
+    return;
+  }
+
+  statementQrStage.innerHTML = `
+    <div class="qr-content">
+      <span class="qr-caption">Escaneie para pagar</span>
+      <img src="${imageSrc}" alt="QR Code do extrato" />
+    </div>
+  `;
+}
+
+function handleQrModalBackdropClick(event) {
+  if (event.target?.dataset?.closeQrModal === 'true') {
+    closeStatementQrModal();
+  }
+}
+
+function handleWindowKeydown(event) {
+  if (event.key === 'Escape' && statementQrModal && !statementQrModal.hidden) {
+    closeStatementQrModal();
+  }
+}
+
+async function copyStatementCode() {
+  if (!statementQrCode.value) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(statementQrCode.value);
+    showToast('Codigo do extrato copiado.', 'success');
+  } catch {
+    showToast('Nao foi possivel copiar automaticamente. Copie manualmente o codigo.', 'warning');
+  }
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 resetPaymentData();
