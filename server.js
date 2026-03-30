@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +24,8 @@ const port = Number(process.env.PORT || 3000);
 
 const SESSION_COOKIE = 'panel_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const MIN_DEPOSIT_CENTS = 100;
+const MAX_DEPOSIT_CENTS = 1_500_000;
 
 const gatewayKey = readEnv('ACCESS_KEY', 'GATEWAY_API_KEY', 'PODPAY_API_KEY');
 const gatewayMode = readEnv('APP_MODE', 'GATEWAY_ENV', 'PODPAY_ENV');
@@ -34,8 +37,9 @@ const sessionSecret = readEnv('APP_SECRET', 'SESSION_SECRET') || 'troque-este-se
 const appUrl = readEnv('APP_URL', 'PUBLIC_URL');
 const webhookSecret = readEnv('WEBHOOK_SECRET', 'PODPAY_WEBHOOK_SECRET');
 const defaultProfile = readDefaultProfile();
+const chargeStoreFile = path.join(__dirname, 'data', 'charges.json');
 
-const chargeCache = new Map();
+const chargeCache = loadChargeCache();
 const webhookEvents = new Map();
 
 const publicDir = path.join(__dirname, 'public');
@@ -69,10 +73,18 @@ const checkoutSchema = z
   .superRefine((data, ctx) => {
     const cents = parseAmountToCents(data.amount);
 
-    if (!cents || cents < 100) {
+    if (!cents || cents < MIN_DEPOSIT_CENTS) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'O valor minimo para pagamento e R$ 1,00.',
+        path: ['amount']
+      });
+    }
+
+    if (cents > MAX_DEPOSIT_CENTS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'O valor maximo por deposito e R$ 15.000,00.',
         path: ['amount']
       });
     }
@@ -117,6 +129,7 @@ app.use(
   })
 );
 app.use(attachSession);
+app.use(applySecurityHeaders);
 app.use(
   '/auth',
   rateLimit({
@@ -149,6 +162,7 @@ app.use(
     }
   })
 );
+app.use('/health', requireLocalAccess);
 app.use(express.static(publicDir, { extensions: ['html'], index: false }));
 
 app.get('/', (req, res) => {
@@ -186,7 +200,7 @@ app.get('/auth/session', requireAuth, (req, res) => {
   });
 });
 
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/login', requireSameOrigin, async (req, res) => {
   const result = loginSchema.safeParse(req.body);
 
   if (!result.success) {
@@ -227,7 +241,7 @@ app.post('/auth/login', async (req, res) => {
   const token = createSession(account.id);
   setCookie(res, SESSION_COOKIE, token, {
     httpOnly: true,
-    sameSite: 'Lax',
+    sameSite: 'Strict',
     secure: shouldUseSecureCookie(req),
     path: '/',
     maxAge: SESSION_TTL_MS
@@ -243,10 +257,10 @@ app.post('/auth/login', async (req, res) => {
   });
 });
 
-app.post('/auth/logout', (req, res) => {
+app.post('/auth/logout', requireSameOrigin, (req, res) => {
   clearCookie(res, SESSION_COOKIE, {
     httpOnly: true,
-    sameSite: 'Lax',
+    sameSite: 'Strict',
     secure: shouldUseSecureCookie(req),
     path: '/'
   });
@@ -291,7 +305,7 @@ app.post('/return/notify', (req, res) => {
   return res.json({ success: true });
 });
 
-app.post('/checkout/create', requireAuth, async (req, res) => {
+app.post('/checkout/create', requireAuth, requireSameOrigin, async (req, res) => {
   const result = checkoutSchema.safeParse(req.body);
 
   if (!result.success) {
@@ -339,7 +353,7 @@ app.post('/checkout/create', requireAuth, async (req, res) => {
       body: JSON.stringify(payload)
     });
 
-    const charge = await mapCharge(gatewayResponse.data, gatewayResponse.meta);
+    const charge = attachChargeOwner(await mapCharge(gatewayResponse.data, gatewayResponse.meta), req.account);
     rememberCharge(charge);
 
     return res.json({ success: true, data: charge });
@@ -369,6 +383,16 @@ app.get('/checkout/status/:reference', requireAuth, async (req, res) => {
 
   const cachedCharge = chargeCache.get(reference) || null;
 
+  if (cachedCharge && !canAccessCharge(req.account, cachedCharge)) {
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Cobranca nao encontrada.'
+      }
+    });
+  }
+
   if (!gatewayKey) {
     if (cachedCharge) {
       return res.json({ success: true, data: cachedCharge });
@@ -385,7 +409,7 @@ app.get('/checkout/status/:reference', requireAuth, async (req, res) => {
 
   try {
     const gatewayResponse = await requestGateway(`/v1/transactions/${encodeURIComponent(reference)}`);
-    const charge = await mapCharge(gatewayResponse.data, gatewayResponse.meta);
+    const charge = attachChargeOwner(await mapCharge(gatewayResponse.data, gatewayResponse.meta), req.account, cachedCharge);
     rememberCharge(charge);
 
     return res.json({ success: true, data: charge });
@@ -404,6 +428,25 @@ app.get('/checkout/status/:reference', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/checkout/statement', requireAuth, (req, res) => {
+  const filters = readStatementFilters(req.query || {});
+  const charges = filterCharges(listChargesForAccount(req.account), filters);
+
+  return res.json({
+    success: true,
+    data: {
+      filters,
+      items: charges,
+      summary: {
+        totalCount: charges.length,
+        paidCount: charges.filter((charge) => charge.state === 'paid').length,
+        totalGeneratedCents: charges.reduce((sum, charge) => sum + Number(charge.amountCents || 0), 0),
+        totalPaidCents: charges.filter((charge) => charge.state === 'paid').reduce((sum, charge) => sum + Number(charge.amountCents || 0), 0)
+      }
+    }
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({
     success: true,
@@ -420,7 +463,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use((_req, res) => {
-  res.redirect('/');
+  res.status(404).send('Nao encontrado.');
 });
 
 app.listen(port, () => {
@@ -458,6 +501,65 @@ function attachSession(req, _res, next) {
   req.session = session;
   req.account = account;
   next();
+}
+
+function applySecurityHeaders(req, res, next) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+
+  if (req.path === '/login' || req.path === '/painel' || req.path.startsWith('/auth') || req.path.startsWith('/checkout')) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+  }
+
+  next();
+}
+
+function requireSameOrigin(req, res, next) {
+  const source = String(req.headers.origin || req.headers.referer || '').trim();
+
+  if (!source) {
+    return next();
+  }
+
+  try {
+    const sourceUrl = new URL(source);
+    const host = String(req.headers.host || '').trim().toLowerCase();
+    const allowedOrigins = new Set([`${req.protocol}://${host}`.toLowerCase()]);
+
+    if (appUrl) {
+      allowedOrigins.add(new URL(appUrl).origin.toLowerCase());
+    }
+
+    if (!allowedOrigins.has(sourceUrl.origin.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Origem da requisicao nao autorizada.'
+        }
+      });
+    }
+  } catch {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Origem da requisicao nao autorizada.'
+      }
+    });
+  }
+
+  return next();
+}
+
+function requireLocalAccess(req, res, next) {
+  const ip = String(req.ip || '').replace(/^::ffff:/, '');
+
+  if (ip === '127.0.0.1' || ip === '::1') {
+    return next();
+  }
+
+  return res.status(404).send('Nao encontrado.');
 }
 
 function verifyWebhookSignature(req) {
@@ -660,6 +762,28 @@ function shouldUseSecureCookie(req) {
   return gatewayEnv === 'live' && !isLocalHost;
 }
 
+function loadChargeCache() {
+  try {
+    if (!fs.existsSync(chargeStoreFile)) {
+      return new Map();
+    }
+
+    const payload = JSON.parse(fs.readFileSync(chargeStoreFile, 'utf8'));
+    const items = Array.isArray(payload) ? payload : [];
+    return new Map(items.filter((item) => item?.reference).map((item) => [item.reference, item]));
+  } catch {
+    return new Map();
+  }
+}
+
+function persistCharges() {
+  try {
+    fs.writeFileSync(chargeStoreFile, JSON.stringify([...chargeCache.values()], null, 2));
+  } catch (error) {
+    console.error('Falha ao salvar extrato local:', error);
+  }
+}
+
 function findAccountById(accountId) {
   return accounts.find((account) => account.id === accountId) || null;
 }
@@ -693,8 +817,13 @@ function rememberCharge(charge) {
     requestId: charge.requestId || previous?.requestId || null,
     lastEvent: charge.lastEvent || previous?.lastEvent || null,
     lastEventId: charge.lastEventId || previous?.lastEventId || null,
+    accountId: charge.accountId || previous?.accountId || '',
+    accountLogin: charge.accountLogin || previous?.accountLogin || '',
+    accountLabel: charge.accountLabel || previous?.accountLabel || '',
     updatedAt: charge.updatedAt || new Date().toISOString()
   });
+
+  persistCharges();
 }
 
 function buildChargeFromWebhook(event) {
@@ -713,6 +842,97 @@ function buildChargeFromWebhook(event) {
     lastEventId: event.eventId,
     updatedAt: event.timestamp || new Date().toISOString()
   };
+}
+
+function attachChargeOwner(charge, account, previousCharge = null) {
+  return {
+    ...(previousCharge || {}),
+    ...charge,
+    accountId: account?.id || previousCharge?.accountId || '',
+    accountLogin: account?.login || previousCharge?.accountLogin || '',
+    accountLabel: account?.label || account?.login || previousCharge?.accountLabel || previousCharge?.accountLogin || ''
+  };
+}
+
+function canAccessCharge(account, charge) {
+  return Boolean(account?.id && charge?.accountId && account.id === charge.accountId);
+}
+
+function listChargesForAccount(account) {
+  return [...chargeCache.values()]
+    .filter((charge) => canAccessCharge(account, charge))
+    .sort((left, right) => {
+      const rightTime = Date.parse(right.updatedAt || right.createdAt || 0) || 0;
+      const leftTime = Date.parse(left.updatedAt || left.createdAt || 0) || 0;
+      return rightTime - leftTime;
+    });
+}
+
+function readStatementFilters(query) {
+  return {
+    status: String(query.status || '').trim().toLowerCase(),
+    from: normalizeDateInput(query.from, 'start'),
+    to: normalizeDateInput(query.to, 'end'),
+    minAmountCents: parseFilterAmount(query.minAmount),
+    maxAmountCents: parseFilterAmount(query.maxAmount),
+    reference: String(query.reference || '').trim().toLowerCase()
+  };
+}
+
+function filterCharges(charges, filters) {
+  return charges.filter((charge) => {
+    const status = String(charge.state || '').toLowerCase();
+    const reference = String(charge.reference || '').toLowerCase();
+    const amountCents = Number(charge.amountCents || 0);
+    const createdAt = Date.parse(charge.createdAt || charge.updatedAt || 0) || 0;
+
+    if (filters.status && status !== filters.status) {
+      return false;
+    }
+
+    if (filters.reference && !reference.includes(filters.reference)) {
+      return false;
+    }
+
+    if (filters.minAmountCents && amountCents < filters.minAmountCents) {
+      return false;
+    }
+
+    if (filters.maxAmountCents && amountCents > filters.maxAmountCents) {
+      return false;
+    }
+
+    if (filters.from && createdAt < filters.from) {
+      return false;
+    }
+
+    if (filters.to && createdAt > filters.to) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function normalizeDateInput(value, mode = 'start') {
+  const raw = String(value || '').trim();
+
+  if (!raw) {
+    return 0;
+  }
+
+  const suffix = mode === 'end' ? 'T23:59:59.999Z' : 'T00:00:00.000Z';
+  const date = new Date(`${raw}${suffix}`);
+  if (Number.isNaN(date.getTime())) {
+    return 0;
+  }
+
+  return date.getTime();
+}
+
+function parseFilterAmount(value) {
+  const cents = parseAmountToCents(value);
+  return cents > 0 ? cents : 0;
 }
 
 function normalizeState(value) {

@@ -318,10 +318,27 @@ h1 {
   justify-content: center;
 }
 
+.statement-panel {
+  grid-column: 1 / -1;
+}
+
 .deposit-card {
   width: min(100%, 470px);
   padding: 24px;
   border-radius: 26px;
+}
+
+.statement-card {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(18, 18, 17, 0.9), rgba(11, 11, 10, 0.96));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  border-radius: 26px;
+  padding: 24px;
+}
+
+.statement-header {
+  align-items: center;
 }
 
 .card-header {
@@ -455,6 +472,72 @@ h1 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.statement-summary {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.statement-filters {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.statement-filter-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.statement-apply-button {
+  width: auto;
+  min-width: 180px;
+}
+
+.statement-list {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.statement-item,
+.statement-empty {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.statement-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.statement-item strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.statement-item span,
+.statement-empty,
+.statement-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.statement-meta {
+  display: grid;
+  gap: 6px;
+  text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .detail {
@@ -594,7 +677,9 @@ h1 {
   }
 
   .deposit-form,
-  .details-grid {
+  .details-grid,
+  .statement-filters,
+  .statement-summary {
     grid-template-columns: 1fr;
   }
 
@@ -605,5 +690,22 @@ h1 {
 
   .card-header {
     align-items: center;
+  }
+
+  .statement-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .statement-meta {
+    text-align: left;
+  }
+
+  .statement-filter-actions {
+    flex-direction: column-reverse;
+  }
+
+  .statement-apply-button {
+    width: 100%;
   }
 }

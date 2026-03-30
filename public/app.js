@@ -3,11 +3,19 @@ const submitButton = document.querySelector('#submit-button');
 const resetButton = document.querySelector('#reset-button');
 const copyButton = document.querySelector('#copy-button');
 const logoutButton = document.querySelector('#logout-button');
+const refreshStatementButton = document.querySelector('#refresh-statement-button');
+const clearFiltersButton = document.querySelector('#clear-filters-button');
 const accountBadge = document.querySelector('#account-badge');
 const feedback = document.querySelector('#feedback');
 const qrStage = document.querySelector('#qr-stage');
 const paymentCode = document.querySelector('#payment-code');
 const cardTitle = document.querySelector('#card-title');
+const statementList = document.querySelector('#statement-list');
+const statementTotalGenerated = document.querySelector('#statement-total-generated');
+const statementTotalPaid = document.querySelector('#statement-total-paid');
+const statementTotalCount = document.querySelector('#statement-total-count');
+const statementPaidCount = document.querySelector('#statement-paid-count');
+const statementFiltersForm = document.querySelector('#statement-filters');
 
 const paymentReference = document.querySelector('#payment-reference');
 const paymentStatus = document.querySelector('#payment-status');
@@ -25,8 +33,12 @@ submitButton.addEventListener('click', handleSubmit);
 resetButton.addEventListener('click', resetView);
 copyButton.addEventListener('click', copyCode);
 logoutButton?.addEventListener('click', logout);
+refreshStatementButton?.addEventListener('click', loadStatement);
+statementFiltersForm?.addEventListener('submit', handleStatementFilterSubmit);
+clearFiltersButton?.addEventListener('click', clearStatementFilters);
 
 loadSession();
+loadStatement();
 
 function getPayload() {
   const data = new FormData(form);
@@ -78,6 +90,7 @@ async function handleSubmit(event) {
 
     applyPayment(payload.data);
     startPollingIfNeeded(payload.data);
+    loadStatement();
     setFeedback('QR Code gerado com sucesso. Aguarde a confirmacao do pagamento.', 'success');
   } catch (error) {
     resetPaymentData();
@@ -180,6 +193,7 @@ function startPollingIfNeeded(payment) {
       }
 
       applyPayment(payload.data);
+      loadStatement(true);
 
       if (!['pending', 'processing'].includes(String(payload.data.state).toLowerCase())) {
         stopPolling();
@@ -211,6 +225,50 @@ async function loadSession() {
   } catch {
     window.location.href = '/login';
   }
+}
+
+async function loadStatement(silent = false) {
+  try {
+    if (refreshStatementButton) {
+      refreshStatementButton.disabled = true;
+    }
+
+    const response = await fetch(`/checkout/statement${buildStatementQuery()}`, {
+      credentials: 'same-origin'
+    });
+    const payload = await response.json();
+
+    if (response.status === 401) {
+      if (!silent) {
+        setFeedback('Sua sessao expirou. Faca login novamente.', 'error');
+      }
+      return;
+    }
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error?.message || 'Nao foi possivel carregar o extrato.');
+    }
+
+    renderStatement(payload.data);
+  } catch (error) {
+    if (!silent) {
+      setFeedback(error.message, 'error');
+    }
+  } finally {
+    if (refreshStatementButton) {
+      refreshStatementButton.disabled = false;
+    }
+  }
+}
+
+function handleStatementFilterSubmit(event) {
+  event.preventDefault();
+  loadStatement();
+}
+
+function clearStatementFilters() {
+  statementFiltersForm?.reset();
+  loadStatement();
 }
 
 async function logout() {
@@ -277,6 +335,53 @@ function resetPaymentData() {
   `;
 }
 
+function renderStatement(data) {
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const summary = data?.summary || {};
+
+  statementTotalGenerated.textContent = formatCents(summary.totalGeneratedCents || 0);
+  statementTotalPaid.textContent = formatCents(summary.totalPaidCents || 0);
+  statementTotalCount.textContent = String(summary.totalCount || 0);
+  statementPaidCount.textContent = String(summary.paidCount || 0);
+
+  if (!items.length) {
+    statementList.innerHTML = '<div class="statement-empty">Nenhum deposito registrado para este operador ainda.</div>';
+    return;
+  }
+
+  statementList.innerHTML = items
+    .map(
+      (item) => `
+        <article class="statement-item">
+          <div>
+            <strong>${item.amountFormatted || formatCents(item.amountCents || 0)}</strong>
+            <span>${formatStatus(item.state)} - ${formatDateTime(item.createdAt)}</span>
+          </div>
+          <div class="statement-meta">
+            <span>${shortId(item.reference)}</span>
+            <span>${item.accountLabel || item.accountLogin || '-'}</span>
+          </div>
+        </article>
+      `
+    )
+    .join('');
+}
+
+function buildStatementQuery() {
+  const formData = new FormData(statementFiltersForm);
+  const params = new URLSearchParams();
+
+  for (const [key, value] of formData.entries()) {
+    const normalized = String(value || '').trim();
+    if (normalized) {
+      params.set(key, normalized);
+    }
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
 function setLoading(isLoading) {
   submitButton.disabled = isLoading;
   submitButton.textContent = isLoading ? 'Gerando...' : 'Gerar QR Code';
@@ -301,6 +406,13 @@ function formatStatus(status) {
   };
 
   return labels[String(status).toLowerCase()] || status || '-';
+}
+
+function formatCents(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format((Number(value) || 0) / 100);
 }
 
 function formatDateTime(value) {

@@ -11,8 +11,8 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=5" />
-    <script src="/app.js?v=5" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=7" />
+    <script src="/app.js?v=7" defer></script>
   </head>
   <body>
     <div class="ambient ambient-a"></div>
@@ -27,6 +27,7 @@
         <h1>Informe o valor e gere o codigo em segundos.</h1>
         <p class="lead">Uma tela limpa para criar a cobranca e acompanhar o pagamento sem distracoes.</p>
         <p class="account-badge" id="account-badge">Carregando acesso...</p>
+        <p class="security-note"><span></span>Depositos liberados apenas entre R$ 1,00 e R$ 15.000,00, com sessao protegida e rotas internas blindadas.</p>
 
         <form id="deposit-form" class="deposit-form">
           <div class="field wide">
@@ -108,6 +109,81 @@
           </div>
 
           <p id="feedback" class="feedback">Informe um valor para continuar.</p>
+        </article>
+      </section>
+
+      <section class="statement-panel reveal delay-1">
+        <article class="statement-card">
+          <div class="card-header statement-header">
+            <div>
+              <p class="card-kicker">Extrato</p>
+              <h2>Depositos do operador</h2>
+            </div>
+            <button class="ghost-button" id="refresh-statement-button" type="button">Atualizar</button>
+          </div>
+
+          <div class="statement-summary">
+            <div class="detail">
+              <span>Total gerado</span>
+              <strong id="statement-total-generated">R$ 0,00</strong>
+            </div>
+            <div class="detail">
+              <span>Total pago</span>
+              <strong id="statement-total-paid">R$ 0,00</strong>
+            </div>
+            <div class="detail">
+              <span>Depositos</span>
+              <strong id="statement-total-count">0</strong>
+            </div>
+            <div class="detail">
+              <span>Pagos</span>
+              <strong id="statement-paid-count">0</strong>
+            </div>
+          </div>
+
+          <form class="statement-filters" id="statement-filters">
+            <div class="field">
+              <label for="filter-status">Status</label>
+              <select id="filter-status" name="status">
+                <option value="">Todos</option>
+                <option value="pending">Aguardando</option>
+                <option value="processing">Processando</option>
+                <option value="paid">Pago</option>
+                <option value="failed">Falhou</option>
+                <option value="cancelled">Cancelado</option>
+                <option value="blocked">Bloqueado</option>
+                <option value="refunded">Estornado</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="filter-from">Data inicial</label>
+              <input id="filter-from" name="from" type="date" />
+            </div>
+            <div class="field">
+              <label for="filter-to">Data final</label>
+              <input id="filter-to" name="to" type="date" />
+            </div>
+            <div class="field">
+              <label for="filter-min-amount">Valor minimo</label>
+              <input id="filter-min-amount" name="minAmount" type="text" inputmode="decimal" placeholder="1,00" />
+            </div>
+            <div class="field">
+              <label for="filter-max-amount">Valor maximo</label>
+              <input id="filter-max-amount" name="maxAmount" type="text" inputmode="decimal" placeholder="15000,00" />
+            </div>
+            <div class="field wide">
+              <label for="filter-reference">Buscar por referencia</label>
+              <input id="filter-reference" name="reference" type="text" placeholder="Codigo ou trecho da referencia" />
+            </div>
+            <div class="statement-filter-actions">
+              <button class="secondary-button" id="clear-filters-button" type="button">Limpar filtros</button>
+              <button class="submit-button statement-apply-button" type="submit">Aplicar filtros</button>
+            </div>
+          </form>
+
+          <div class="statement-list" id="statement-list">
+            <div class="statement-empty">Nenhum deposito registrado para este operador ainda.</div>
+          </div>
         </article>
       </section>
     </main>
