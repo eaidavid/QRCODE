@@ -127,7 +127,7 @@ async function handleSubmit(event) {
 
 function applyPayment(payment) {
   cardTitle.textContent = getCardTitle(payment.state);
-  paymentReference.textContent = shortId(payment.reference);
+  paymentReference.textContent = payment.reference || '-';
   paymentStatus.textContent = formatStatus(payment.state);
   paymentAmount.textContent = payment.amountFormatted || '-';
   paymentCreated.textContent = formatDateTime(payment.createdAt);
@@ -468,7 +468,7 @@ function renderStatement(data) {
             ${item.source === 'bot' ? '<span class="statement-tag bot">Bot</span>' : ''}
           </div>
           <div class="statement-meta">
-            <span>${shortId(item.reference)}</span>
+            <span>ID: ${escapeHtml(item.reference || '-')}</span>
             <span>${item.accountLabel || item.accountLogin || '-'}</span>
             <button class="ghost-button statement-open-button" type="button" data-reference="${escapeHtmlAttribute(item.reference || '')}">Ver QR</button>
           </div>
@@ -571,7 +571,7 @@ function openStatementQrModal(item) {
   statementQrModal.hidden = false;
   document.body.classList.add('modal-open');
   statementQrTitle.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
-  statementQrReference.textContent = shortId(item.reference);
+  statementQrReference.textContent = item.reference || '-';
   statementQrStatus.textContent = formatStatus(item.state);
   statementQrAmount.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
   statementQrCreated.textContent = formatDateTime(item.createdAt);
