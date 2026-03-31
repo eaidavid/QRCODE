@@ -468,7 +468,7 @@ function renderStatement(data) {
             ${item.source === 'bot' ? '<span class="statement-tag bot">Bot</span>' : ''}
           </div>
           <div class="statement-meta">
-            <span>ID: ${escapeHtml(item.reference || '-')}</span>
+            <span>ID: ${item.reference || '-'}</span>
             <span>${item.accountLabel || item.accountLogin || '-'}</span>
             <button class="ghost-button statement-open-button" type="button" data-reference="${escapeHtmlAttribute(item.reference || '')}">Ver QR</button>
           </div>

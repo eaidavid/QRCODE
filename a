@@ -36,4 +36,108 @@ DB_POSTGRESDB_USER=qrcode_user
 DB_POSTGRESDB_PASSWORD=QrCodeBot@2026#Forte
 
 ​x2VZ2c8Y8fO
-85.239.231.7
+85.239.231.7\
+
+services:
+  evolution:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=85.239.231.7:8080
+      - AUTHENTICATION_API_KEY=890c5be7b4d2d0fbdfe68b65661b16a7848536e5c2f4fcded3f004d4c0c86ce8
+      - DATABASE_ENABLED=false
+      - CACHE_REDIS_ENABLED=false
+      - WEBSOCKET_ENABLED=true
+      - CONFIG_SESSION_PHONE_CLIENT=Chrome
+      - CONFIG_SESSION_PHONE_NAME=BotPix
+    volumes:
+      - evolution_instances:/evolution/instances
+
+volumes:
+  evolution_instances:
+
+
+services:
+  evolution:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_TYPE: "http"
+      SERVER_PORT: "8080"
+      SERVER_URL: "http://85.239.231.7:8080"
+      AUTHENTICATION_TYPE: "apikey"
+      AUTHENTICATION_API_KEY: "890c5be7b4d2d0fbdfe68b65661b16a7848536e5c2f4fcded3f004d4c0c86ce8"
+      DATABASE_PROVIDER: "sqlite"
+      DATABASE_CONNECTION_URI: "file:/evolution/instances/evolution.db?connection_limit=1"
+      CACHE_REDIS_ENABLED: "false"
+      WEBSOCKET_ENABLED: "true"
+      CONFIG_SESSION_PHONE_CLIENT: "Chrome"
+      CONFIG_SESSION_PHONE_NAME: "BotPix"
+    volumes:
+      - evolution_instances:/evolution/instances
+
+volumes:
+  evolution_instances:
+
+
+services:
+  evolution:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_TYPE: "http"
+      SERVER_PORT: "8080"
+      SERVER_URL: "http://85.239.231.7:8080"
+      AUTHENTICATION_TYPE: "apikey"
+      AUTHENTICATION_API_KEY: "890c5be7b4d2d0fbdfe68b65661b16a7848536e5c2f4fcded3f004d4c0c86ce8"
+
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: "postgresql://evolution_user:Evolution@2026#Forte@host.docker.internal:5432/evolution_db"
+
+      CACHE_REDIS_ENABLED: "false"
+      WEBSOCKET_ENABLED: "true"
+      CONFIG_SESSION_PHONE_CLIENT: "Chrome"
+      CONFIG_SESSION_PHONE_NAME: "BotPix"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - evolution_instances:/evolution/instances
+
+volumes:
+  evolution_instances:
+
+
+services:
+  evolution:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: always
+    network_mode: host
+    environment:
+      SERVER_TYPE: "http"
+      SERVER_PORT: "8080"
+      SERVER_URL: "http://85.239.231.7:8080"
+      AUTHENTICATION_TYPE: "apikey"
+      AUTHENTICATION_API_KEY: "890c5be7b4d2d0fbdfe68b65661b16a7848536e5c2f4fcded3f004d4c0c86ce8"
+
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: "postgresql://evolution_user:Evolution2026Forte123@127.0.0.1:5432/evolution_db"
+
+      CACHE_REDIS_ENABLED: "false"
+      WEBSOCKET_ENABLED: "true"
+      CONFIG_SESSION_PHONE_CLIENT: "Chrome"
+      CONFIG_SESSION_PHONE_NAME: "BotPix"
+
+
+curl -X POST "http://85.239.231.7:5678/webhook/wa-pix-create" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"pix de 100","phone":"5511926493183","userName":"Cliente Teste","groupId":"grupo-01","userId":"usuario-01"}'
