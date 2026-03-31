@@ -31,6 +31,7 @@ const statementCopyButton = document.querySelector('#statement-copy-button');
 const clientInstanceId = getClientInstanceId();
 
 const paymentReference = document.querySelector('#payment-reference');
+const paymentFullReference = document.querySelector('#payment-full-reference');
 const paymentStatus = document.querySelector('#payment-status');
 const paymentAmount = document.querySelector('#payment-amount');
 const paymentCreated = document.querySelector('#payment-created');
@@ -127,7 +128,8 @@ async function handleSubmit(event) {
 
 function applyPayment(payment) {
   cardTitle.textContent = getCardTitle(payment.state);
-  paymentReference.textContent = payment.reference || '-';
+  paymentReference.textContent = getShortTransactionId(payment.reference);
+  paymentFullReference.textContent = payment.reference || '-';
   paymentStatus.textContent = formatStatus(payment.state);
   paymentAmount.textContent = payment.amountFormatted || '-';
   paymentCreated.textContent = formatDateTime(payment.createdAt);
@@ -468,7 +470,7 @@ function renderStatement(data) {
             ${item.source === 'bot' ? '<span class="statement-tag bot">Bot</span>' : ''}
           </div>
           <div class="statement-meta">
-            <span>ID: ${item.reference || '-'}</span>
+            <span>ID: ${getShortTransactionId(item.reference)}</span>
             <span>${item.accountLabel || item.accountLogin || '-'}</span>
             <button class="ghost-button statement-open-button" type="button" data-reference="${escapeHtmlAttribute(item.reference || '')}">Ver QR</button>
           </div>
@@ -545,6 +547,16 @@ function shortId(value) {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
+function getShortTransactionId(reference) {
+  const value = String(reference || '').trim();
+
+  if (!value) {
+    return '-';
+  }
+
+  return value.slice(-8).toUpperCase();
+}
+
 function getCardTitle(state) {
   return String(state).toLowerCase() === 'paid' ? 'Pagamento confirmado' : 'Pagamento em aberto';
 }
@@ -571,7 +583,9 @@ function openStatementQrModal(item) {
   statementQrModal.hidden = false;
   document.body.classList.add('modal-open');
   statementQrTitle.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
-  statementQrReference.textContent = item.reference || '-';
+  statementQrReference.textContent = getShortTransactionId(item.reference);
+  const statementQrFullReference = document.querySelector('#statement-qr-full-reference');
+  statementQrFullReference.textContent = item.reference || '-';
   statementQrStatus.textContent = formatStatus(item.state);
   statementQrAmount.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
   statementQrCreated.textContent = formatDateTime(item.createdAt);
