@@ -403,6 +403,49 @@ app.get('/api/automation/receipt/:reference', requireAutomationToken, async (req
   }
 });
 
+app.get('/api/public/receipt/:reference', async (req, res) => {
+  const reference = String(req.params.reference || '').trim();
+
+  if (!reference) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_REFERENCE',
+        message: 'Informe uma referencia valida.'
+      }
+    });
+  }
+
+  const cachedCharge = chargeCache.get(reference) || null;
+
+  if (!gatewayKey && !cachedCharge) {
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Cobranca nao encontrada.'
+      }
+    });
+  }
+
+  try {
+    const charge = await resolveAutomationCharge(reference, cachedCharge);
+    const buffer = await buildReceiptPng(charge);
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: {
+        code: error.code || 'SERVICE_ERROR',
+        message: error.message || 'Nao foi possivel gerar o comprovante.'
+      }
+    });
+  }
+});
+
 app.post(
   '/auth/login',
   rateLimit({
