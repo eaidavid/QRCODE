@@ -40,6 +40,7 @@ const automationToken = readEnv('AUTOMATION_TOKEN', 'N8N_API_TOKEN', 'BOT_API_TO
 const appUrl = readEnv('APP_URL', 'PUBLIC_URL');
 const webhookSecret = readEnv('WEBHOOK_SECRET', 'PODPAY_WEBHOOK_SECRET');
 const webhookSignatureValidationEnabled = !['0', 'false', 'no', 'off'].includes(readEnv('WEBHOOK_VALIDATE_SIGNATURE').toLowerCase());
+const n8nPaymentWebhookUrl = readEnv('N8N_PAYMENT_WEBHOOK_URL');
 const defaultProfile = readDefaultProfile();
 const chargeStoreFile = path.join(__dirname, 'data', 'charges.json');
 
@@ -537,6 +538,36 @@ app.post('/return/notify', (req, res) => {
     paidAt: charge.paidAt || null,
     lastEventId: charge.lastEventId || null
   });
+
+  if (charge.state === 'paid' && n8nPaymentWebhookUrl) {
+    fetch(n8nPaymentWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        event: event.event,
+        data: {
+          id: charge.reference,
+          status: charge.state,
+          amount: charge.amountCents,
+          paidAt: charge.paidAt
+        }
+      })
+    })
+      .then((response) => {
+        console.log('[return/notify] webhook n8n acionado', {
+          reference: charge.reference,
+          statusCode: response.status
+        });
+      })
+      .catch((error) => {
+        console.error('[return/notify] falha ao acionar webhook n8n', {
+          reference: charge.reference,
+          message: error.message
+        });
+      });
+  }
 
   return res.json({ success: true });
 });
