@@ -39,6 +39,7 @@ const sessionSecret = readEnv('APP_SECRET', 'SESSION_SECRET') || 'troque-este-se
 const automationToken = readEnv('AUTOMATION_TOKEN', 'N8N_API_TOKEN', 'BOT_API_TOKEN');
 const appUrl = readEnv('APP_URL', 'PUBLIC_URL');
 const webhookSecret = readEnv('WEBHOOK_SECRET', 'PODPAY_WEBHOOK_SECRET');
+const webhookSignatureValidationEnabled = !['0', 'false', 'no', 'off'].includes(readEnv('WEBHOOK_VALIDATE_SIGNATURE').toLowerCase());
 const defaultProfile = readDefaultProfile();
 const chargeStoreFile = path.join(__dirname, 'data', 'charges.json');
 
@@ -838,6 +839,10 @@ function readBearerToken(value) {
 }
 
 function verifyWebhookSignature(req) {
+  if (!webhookSignatureValidationEnabled) {
+    return '';
+  }
+
   if (!webhookSecret) {
     return '';
   }
