@@ -468,7 +468,17 @@ app.post('/auth/logout', requireSameOrigin, (req, res) => {
 app.post('/return/notify', (req, res) => {
   const signatureError = verifyWebhookSignature(req);
 
+  console.log('[return/notify] webhook recebido', {
+    hasSignature: Boolean(req.headers['x-podpay-signature']),
+    hasTimestamp: Boolean(req.headers['x-webhook-timestamp']),
+    contentLength: req.headers['content-length'] || null
+  });
+
   if (signatureError) {
+    console.warn('[return/notify] webhook rejeitado por assinatura', {
+      error: signatureError
+    });
+
     return res.status(401).json({
       success: false,
       error: {
@@ -481,6 +491,13 @@ app.post('/return/notify', (req, res) => {
   const result = webhookSchema.safeParse(req.body);
 
   if (!result.success) {
+    console.warn('[return/notify] payload invalido', {
+      issues: result.error.issues.map((issue) => ({
+        path: issue.path,
+        message: issue.message
+      }))
+    });
+
     return res.status(400).json({
       success: false,
       error: {
@@ -492,12 +509,33 @@ app.post('/return/notify', (req, res) => {
 
   const event = result.data;
 
+  console.log('[return/notify] payload validado', {
+    event: event.event,
+    eventId: event.eventId,
+    reference: event.data?.id || null,
+    status: event.data?.status || null,
+    paidAt: event.data?.paidAt || null
+  });
+
   if (wasWebhookProcessed(event.eventId)) {
+    console.log('[return/notify] evento duplicado ignorado', {
+      eventId: event.eventId,
+      reference: event.data?.id || null
+    });
+
     return res.json({ success: true, data: { duplicated: true } });
   }
 
   rememberWebhookEvent(event.eventId);
-  rememberCharge(buildChargeFromWebhook(event));
+  const charge = buildChargeFromWebhook(event);
+  rememberCharge(charge);
+
+  console.log('[return/notify] cobranca atualizada no cache', {
+    reference: charge.reference,
+    state: charge.state,
+    paidAt: charge.paidAt || null,
+    lastEventId: charge.lastEventId || null
+  });
 
   return res.json({ success: true });
 });
