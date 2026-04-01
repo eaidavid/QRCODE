@@ -26,7 +26,7 @@ const port = Number(process.env.PORT || 3000);
 const SESSION_COOKIE = 'panel_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const CLIENT_INSTANCE_HEADER = 'x-client-instance';
-const MIN_DEPOSIT_CENTS = 100;
+const MIN_DEPOSIT_CENTS = 1;
 const MAX_DEPOSIT_CENTS = 1_500_000;
 const DEFAULT_AUTOMATION_OPERATOR = 'operador01';
 
@@ -83,7 +83,7 @@ const checkoutSchema = z
     if (!cents || cents < MIN_DEPOSIT_CENTS) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'O valor minimo para pagamento e R$ 1,00.',
+        message: 'O valor minimo para pagamento e R$ 0,01.',
         path: ['amount']
       });
     }
