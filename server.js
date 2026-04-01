@@ -1321,6 +1321,10 @@ function buildAutomationShareMessage(charge) {
 }
 
 async function resolveAutomationCharge(reference, cachedCharge = null) {
+  if (cachedCharge?.reference) {
+    return cachedCharge;
+  }
+
   if (!gatewayKey) {
     return cachedCharge;
   }
