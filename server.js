@@ -222,6 +222,8 @@ app.post(
     const result = automationCreateChargeSchema.safeParse(req.body);
 
     if (!result.success) {
+      const message = result.error.issues[0]?.message || 'Dados da requisição inválidos';
+
       console.warn('[create-charge] payload invalido', result.error.issues.map((issue) => ({
         path: issue.path,
         message: issue.message
@@ -231,7 +233,7 @@ app.post(
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: result.error.issues[0]?.message || 'Dados invalidos para automacao.'
+          message
         }
       });
     }
@@ -256,6 +258,8 @@ app.post(
     });
 
     if (!checkoutValidation.success) {
+      const message = checkoutValidation.error.issues[0]?.message || 'Valor inválido.';
+
       console.warn('[create-charge] checkout invalido', checkoutValidation.error.issues.map((issue) => ({
         path: issue.path,
         message: issue.message
@@ -265,7 +269,7 @@ app.post(
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: checkoutValidation.error.issues[0]?.message || 'Valor invalido.'
+          message
         }
       });
     }
