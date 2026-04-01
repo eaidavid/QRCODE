@@ -299,6 +299,8 @@ app.post(
 
     const payload = buildChargePayload(result.data.amount, chargeProfile);
 
+    console.log('[create-charge] payload para gateway', payload);
+
     try {
       const gatewayResponse = await requestGateway('/v1/transactions', {
         method: 'POST',
@@ -320,6 +322,12 @@ app.post(
         data: buildAutomationChargeResponse(charge)
       });
     } catch (error) {
+      console.error('[create-charge] falha no gateway', {
+        statusCode: error.statusCode || null,
+        code: error.code || null,
+        message: error.message || null
+      });
+
       return res.status(error.statusCode || 500).json({
         success: false,
         error: {
