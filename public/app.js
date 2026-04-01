@@ -128,7 +128,7 @@ async function handleSubmit(event) {
 
 function applyPayment(payment) {
   cardTitle.textContent = getCardTitle(payment.state);
-  paymentReference.textContent = getShortTransactionId(payment.reference);
+  paymentReference.textContent = getTransactionIdFromPixCode(payment.code, payment.reference);
   paymentFullReference.textContent = payment.reference || '-';
   paymentStatus.textContent = formatStatus(payment.state);
   paymentAmount.textContent = payment.amountFormatted || '-';
@@ -470,7 +470,7 @@ function renderStatement(data) {
             ${item.source === 'bot' ? '<span class="statement-tag bot">Bot</span>' : ''}
           </div>
           <div class="statement-meta">
-            <span>ID: ${getShortTransactionId(item.reference)}</span>
+            <span>ID: ${getTransactionIdFromPixCode(item.code, item.reference)}</span>
             <span>${item.accountLabel || item.accountLogin || '-'}</span>
             <button class="ghost-button statement-open-button" type="button" data-reference="${escapeHtmlAttribute(item.reference || '')}">Ver QR</button>
           </div>
@@ -547,14 +547,22 @@ function shortId(value) {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
-function getShortTransactionId(reference) {
-  const value = String(reference || '').trim();
+function getTransactionIdFromPixCode(code, reference = '') {
+  const pixCode = String(code || '').trim();
 
-  if (!value) {
+  if (pixCode.includes('***')) {
+    const suffix = pixCode.split('***').pop()?.trim();
+    if (suffix) {
+      return suffix;
+    }
+  }
+
+  const fallback = String(reference || '').trim();
+  if (!fallback) {
     return '-';
   }
 
-  return value.slice(-8).toUpperCase();
+  return fallback.slice(-8).toUpperCase();
 }
 
 function getCardTitle(state) {
@@ -583,7 +591,7 @@ function openStatementQrModal(item) {
   statementQrModal.hidden = false;
   document.body.classList.add('modal-open');
   statementQrTitle.textContent = item.amountFormatted || formatCents(item.amountCents || 0);
-  statementQrReference.textContent = getShortTransactionId(item.reference);
+  statementQrReference.textContent = getTransactionIdFromPixCode(item.code, item.reference);
   const statementQrFullReference = document.querySelector('#statement-qr-full-reference');
   statementQrFullReference.textContent = item.reference || '-';
   statementQrStatus.textContent = formatStatus(item.state);
