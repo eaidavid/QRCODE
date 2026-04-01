@@ -251,7 +251,16 @@ app.post(
 
     const checkoutValidation = checkoutSchema.safeParse({ amount: result.data.amount });
 
+    console.log('[create-charge] amount normalizado para checkout', {
+      amount: result.data.amount
+    });
+
     if (!checkoutValidation.success) {
+      console.warn('[create-charge] checkout invalido', checkoutValidation.error.issues.map((issue) => ({
+        path: issue.path,
+        message: issue.message
+      })));
+
       return res.status(400).json({
         success: false,
         error: {
