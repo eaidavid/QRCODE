@@ -36,7 +36,8 @@ DB_POSTGRESDB_USER=qrcode_user
 DB_POSTGRESDB_PASSWORD=QrCodeBot@2026#Forte
 
 ​x2VZ2c8Y8fO
-85.239.231.7\
+ssh root@85.239.231.7
+cd /var/www/QRCODE
 
 services:
   evolution:
