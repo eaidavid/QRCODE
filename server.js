@@ -105,6 +105,13 @@ const automationCreateChargeSchema = z.object({
   note: z.string().trim().min(1).max(280).optional()
 });
 
+const automationReceiptRenderSchema = z.object({
+  reference: z.string().trim().min(1),
+  amountFormatted: z.string().trim().min(1),
+  transactionId: z.string().trim().min(1),
+  phone: z.string().trim().optional()
+});
+
 const webhookSchema = z
   .object({
     event: z.string().trim().min(1),
@@ -468,6 +475,39 @@ app.get('/api/public/receipt/:reference', async (req, res) => {
       success: false,
       error: {
         code: error.code || 'SERVICE_ERROR',
+        message: error.message || 'Nao foi possivel gerar o comprovante.'
+      }
+    });
+  }
+});
+
+app.post('/api/automation/render-receipt', requireAutomationToken, async (req, res) => {
+  const result = automationReceiptRenderSchema.safeParse(req.body);
+
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: result.error.issues[0]?.message || 'Dados inválidos para comprovante.'
+      }
+    });
+  }
+
+  try {
+    const buffer = await buildReceiptPngFromFields(result.data);
+
+    return res.json({
+      success: true,
+      data: {
+        base64: buffer.toString('base64')
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'SERVICE_ERROR',
         message: error.message || 'Nao foi possivel gerar o comprovante.'
       }
     });
@@ -1366,15 +1406,25 @@ async function resolveAutomationCharge(reference, cachedCharge = null) {
 async function buildReceiptPng(charge) {
   const shortId = getShortTransactionId(charge.reference);
   const amount = charge.amountFormatted || formatCents(Number(charge.amountCents || 0));
+  return buildReceiptPngFromFields({
+    reference: charge.reference || '-',
+    amountFormatted: amount,
+    transactionId: shortId,
+    phone: charge.customerPhone || charge.customer?.phone || ''
+  });
+}
+
+async function buildReceiptPngFromFields({ reference, amountFormatted, transactionId, phone = '' }) {
   const svg = `
     <svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
       <rect width="100%" height="100%" fill="#000000"/>
       <line x1="80" y1="120" x2="1120" y2="120" stroke="#ffffff" stroke-width="3"/>
       <line x1="80" y1="510" x2="1120" y2="510" stroke="#ffffff" stroke-width="3"/>
       <text x="600" y="210" fill="#ffffff" font-size="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">PAGAMENTO CONFIRMADO</text>
-      <text x="600" y="310" fill="#ffffff" font-size="30" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">ID DA TRANSACAO: ${escapeXml(shortId)}</text>
-      <text x="600" y="395" fill="#ffffff" font-size="60" font-weight="700" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">VALOR: ${escapeXml(amount)}</text>
-      <text x="600" y="465" fill="#a3a3a3" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">REFERENCIA: ${escapeXml(charge.reference || '-')}</text>
+      <text x="600" y="290" fill="#ffffff" font-size="28" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">${escapeXml(phone ? `NUMERO: ${phone}` : '')}</text>
+      <text x="600" y="340" fill="#ffffff" font-size="30" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">ID DA TRANSACAO: ${escapeXml(transactionId)}</text>
+      <text x="600" y="420" fill="#ffffff" font-size="60" font-weight="700" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">VALOR: ${escapeXml(amountFormatted)}</text>
+      <text x="600" y="480" fill="#a3a3a3" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">REFERENCIA: ${escapeXml(reference || '-')}</text>
     </svg>`;
 
   return sharp(Buffer.from(svg)).png().toBuffer();
